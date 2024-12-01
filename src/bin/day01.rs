@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs::File;
@@ -32,19 +33,22 @@ fn total_distance(mut left: Vec<u32>, mut right: Vec<u32>) -> u32 {
     left.sort();
     right.sort();
 
-    left.iter().zip(right.iter())
+    left.iter()
+        .zip(right.iter())
         .map(|(l, r)| l.abs_diff(*r))
         .sum()
 }
 
 fn similarity_score(left: &[u32], right: &[u32]) -> u64 {
-    let mut similarity_score = 0u64;
+    let mut occurrences = HashMap::new();
 
-    for l in left {
-        similarity_score += *l as u64 * right.iter().filter(|&r| r == l).count() as u64;
-    }
+    right.iter().for_each(|&n| {
+        *occurrences.entry(n).or_insert(0u64) += 1;
+    });
 
-    similarity_score
+    left.iter()
+        .map(|n| *n as u64 * occurrences.get(n).unwrap_or(&0))
+        .sum()
 }
 
 #[cfg(test)]
