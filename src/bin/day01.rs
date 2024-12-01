@@ -12,7 +12,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .lines()
             .map_while(Result::ok)
             .filter_map(|line| {
-                if let Ok([left, right]) = line.split_whitespace().map(|s| s.parse::<u32>()).collect::<Result<Vec<_>, _>>().as_deref() {
+                if let Ok([left, right]) = line
+                    .split_whitespace()
+                    .map(|s| s.parse::<u32>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .as_deref()
+                {
                     Some((*left, *right))
                 } else {
                     None
@@ -20,7 +25,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             })
             .unzip();
 
-        println!("Total distance: {}", total_distance(left.clone(), right.clone()));
+        println!(
+            "Total distance: {}",
+            total_distance(left.clone(), right.clone())
+        );
         println!("Similarity score: {}", similarity_score(&left, &right));
 
         Ok(())
