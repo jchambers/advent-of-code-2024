@@ -54,13 +54,12 @@ impl Report {
     }
 
     fn is_level_sequence_safe(levels: &[u32]) -> bool {
-        let is_monotonically_increasing = levels.windows(2).all(|pair| pair[0] <= pair[1]);
-        let is_monotonically_decreasing = levels.windows(2).all(|pair| pair[0] >= pair[1]);
-        let is_step_size_safe = levels
+        levels
             .windows(2)
-            .all(|pair| (1..=3).contains(&pair[0].abs_diff(pair[1])));
-
-        (is_monotonically_increasing || is_monotonically_decreasing) && is_step_size_safe
+            .all(|pair| (1..=3).contains(&(pair[0] as i32 - pair[1] as i32)))
+            || levels
+                .windows(2)
+                .all(|pair| (-3..=-1).contains(&(pair[0] as i32 - pair[1] as i32)))
     }
 }
 
