@@ -17,15 +17,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         println!(
             "Sum of products: {}",
-            find_multiplications(&corrupted_memory)
-                .iter()
-                .map(|multiplication| multiplication.evaluate())
-                .sum::<u32>()
+            multiplication_sum(&find_operations(&corrupted_memory))
         );
 
         Ok(())
     } else {
         Err("Usage: day03 INPUT_FILE_PATH".into())
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Operation {
+    Multiply(u32, u32),
+}
+
+impl Operation {
+    fn evaluate(&self) -> Option<u32> {
+        match self {
+            Operation::Multiply(a, b) => Some(a * b),
+        }
     }
 }
 
@@ -36,12 +46,12 @@ enum ParserState {
     ExpectOperatorEnd,
 }
 
-fn find_multiplications(corrupted_memory: &str) -> Vec<Multiplication> {
+fn find_operations(corrupted_memory: &str) -> Vec<Operation> {
     let mut state = ParserState::FindOperatorStart;
     let mut remainder = corrupted_memory;
     let mut multiplicands = [0u32; 2];
     let mut found_first_multiplicand = false;
-    let mut multiplications = Vec::new();
+    let mut operations = Vec::new();
 
     while !remainder.is_empty() {
         match state {
@@ -103,7 +113,7 @@ fn find_multiplications(corrupted_memory: &str) -> Vec<Multiplication> {
 
             ParserState::ExpectOperatorEnd => {
                 if remainder.starts_with(")") {
-                    multiplications.push(Multiplication::new(multiplicands[0], multiplicands[1]));
+                    operations.push(Operation::Multiply(multiplicands[0], multiplicands[1]));
                     remainder = &remainder[1..];
                 }
 
@@ -114,24 +124,14 @@ fn find_multiplications(corrupted_memory: &str) -> Vec<Multiplication> {
         }
     }
 
-    multiplications
+    operations
 }
 
-#[derive(Debug, Eq, PartialEq)]
-struct Multiplication {
-    multiplicands: [u32; 2],
-}
-
-impl Multiplication {
-    fn new(a: u32, b: u32) -> Self {
-        Self {
-            multiplicands: [a, b],
-        }
-    }
-
-    fn evaluate(&self) -> u32 {
-        self.multiplicands[0] * self.multiplicands[1]
-    }
+fn multiplication_sum(operations: &[Operation]) -> u32 {
+    operations
+        .iter()
+        .filter_map(|multiplication| multiplication.evaluate())
+        .sum::<u32>()
 }
 
 #[cfg(test)]
@@ -142,19 +142,29 @@ mod test {
     fn test_find_multiplications() {
         assert_eq!(
             vec![
-                Multiplication::new(2, 4),
-                Multiplication::new(5, 5),
-                Multiplication::new(11, 8),
-                Multiplication::new(8, 5),
+                Operation::Multiply(2, 4),
+                Operation::Multiply(5, 5),
+                Operation::Multiply(11, 8),
+                Operation::Multiply(8, 5),
             ],
-            find_multiplications(
+            find_operations(
                 "xmul(2,4)%&mul[3,7]!@^do_not_mul(5,5)+mul(32,64]then(mul(11,8)mul(8,5))"
             )
         );
 
         assert_eq!(
-            vec![Multiplication::new(123, 456)],
-            find_multiplications("mul(123,456)")
+            vec![Operation::Multiply(123, 456)],
+            find_operations("mul(123,456)")
+        );
+    }
+
+    #[test]
+    fn test_multiplication_sum() {
+        assert_eq!(
+            161,
+            multiplication_sum(&find_operations(
+                "xmul(2,4)%&mul[3,7]!@^do_not_mul(5,5)+mul(32,64]then(mul(11,8)mul(8,5))"
+            ))
         );
     }
 }
