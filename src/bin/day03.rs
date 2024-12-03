@@ -20,6 +20,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             multiplication_sum(&find_operations(&corrupted_memory))
         );
 
+        println!(
+            "Sum of products with stateful evaluation: {}",
+            multiplication_sum_with_state(&find_operations(&corrupted_memory))
+        );
+
         Ok(())
     } else {
         Err("Usage: day03 INPUT_FILE_PATH".into())
@@ -28,15 +33,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 #[derive(Debug, Eq, PartialEq)]
 enum Operation {
+    Do,
+    DoNot,
     Multiply(u32, u32),
-}
-
-impl Operation {
-    fn evaluate(&self) -> Option<u32> {
-        match self {
-            Operation::Multiply(a, b) => Some(a * b),
-        }
-    }
 }
 
 enum ParserState {
@@ -58,12 +57,33 @@ fn find_operations(corrupted_memory: &str) -> Vec<Operation> {
             ParserState::FindOperatorStart => {
                 found_first_multiplicand = false;
 
-                if let Some(next) = remainder.find("mul(") {
-                    state = ParserState::ParseMultiplicand;
-                    remainder = &remainder[next + 4..];
-                } else {
-                    // If we can't find any more "start of operation" strings, we're done
-                    break;
+                let mut next_operator: Option<(usize, &str)> = None;
+
+                for candidate in ["do()", "don't()", "mul("] {
+                    if let Some(token_start) = remainder.find(candidate) {
+                        if next_operator.is_none() || next_operator.unwrap().0 > token_start {
+                            next_operator = Some((token_start, candidate));
+                        }
+                    }
+                }
+
+                match next_operator {
+                    Some((token_start, token)) => {
+                        match token {
+                            "do()" => operations.push(Operation::Do),
+                            "don't()" => operations.push(Operation::DoNot),
+                            "mul(" => {
+                                state = ParserState::ParseMultiplicand;
+                            }
+                            _ => unreachable!(),
+                        }
+
+                        remainder = &remainder[token_start + token.len()..];
+                    }
+                    None => {
+                        // We didn't find a next operator and are done
+                        break;
+                    }
                 }
             }
 
@@ -130,8 +150,28 @@ fn find_operations(corrupted_memory: &str) -> Vec<Operation> {
 fn multiplication_sum(operations: &[Operation]) -> u32 {
     operations
         .iter()
-        .filter_map(|multiplication| multiplication.evaluate())
+        .map(|operation| match operation {
+            Operation::Multiply(a, b) => a * b,
+            _ => 0,
+        })
         .sum::<u32>()
+}
+
+fn multiplication_sum_with_state(operations: &[Operation]) -> u32 {
+    let mut evaluate_multiplication = true;
+    let mut sum = 0;
+
+    operations.iter().for_each(|operation| match operation {
+        Operation::Do => evaluate_multiplication = true,
+        Operation::DoNot => evaluate_multiplication = false,
+        Operation::Multiply(a, b) => {
+            if evaluate_multiplication {
+                sum += a * b;
+            }
+        }
+    });
+
+    sum
 }
 
 #[cfg(test)]
@@ -156,6 +196,20 @@ mod test {
             vec![Operation::Multiply(123, 456)],
             find_operations("mul(123,456)")
         );
+
+        assert_eq!(
+            vec![
+                Operation::Multiply(2, 4),
+                Operation::DoNot,
+                Operation::Multiply(5, 5),
+                Operation::Multiply(11, 8),
+                Operation::Do,
+                Operation::Multiply(8, 5),
+            ],
+            find_operations(
+                "xmul(2,4)&mul[3,7]!^don't()_mul(5,5)+mul(32,64](mul(11,8)undo()?mul(8,5))"
+            )
+        )
     }
 
     #[test]
@@ -164,6 +218,16 @@ mod test {
             161,
             multiplication_sum(&find_operations(
                 "xmul(2,4)%&mul[3,7]!@^do_not_mul(5,5)+mul(32,64]then(mul(11,8)mul(8,5))"
+            ))
+        );
+    }
+
+    #[test]
+    fn test_multiplication_sum_with_state() {
+        assert_eq!(
+            48,
+            multiplication_sum_with_state(&find_operations(
+                "xmul(2,4)&mul[3,7]!^don't()_mul(5,5)+mul(32,64](mul(11,8)undo()?mul(8,5))"
             ))
         );
     }
