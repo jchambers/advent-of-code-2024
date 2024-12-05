@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
         println!("XMAS occurrences: {}", word_search.word_count("XMAS"));
+        println!("Cross occurrences: {}", word_search.cross_count());
 
         Ok(())
     } else {
@@ -96,6 +97,33 @@ impl WordSearch {
         word_count
     }
 
+    fn cross_count(&self) -> u32 {
+        let mut cross_count = 0;
+
+        for col in 1..self.width - 1 {
+            for row in 1..self.height() - 1 {
+                if self.char_at(row, col) != 'A' {
+                    continue;
+                }
+
+                let top_left = self.char_at(row - 1, col - 1);
+                let top_right = self.char_at(row - 1, col + 1);
+                let bottom_left = self.char_at(row + 1, col - 1);
+                let bottom_right = self.char_at(row + 1, col + 1);
+
+                if ((top_left == 'M' && bottom_right == 'S')
+                    || (top_left == 'S' && bottom_right == 'M'))
+                    && ((top_right == 'M' && bottom_left == 'S')
+                        || (top_right == 'S' && bottom_left == 'M'))
+                {
+                    cross_count += 1;
+                }
+            }
+        }
+
+        cross_count
+    }
+
     fn height(&self) -> usize {
         self.grid.len() / self.width
     }
@@ -133,23 +161,26 @@ mod test {
     use super::*;
     use indoc::indoc;
 
+    const TEST_GRID: &str = indoc! {"\
+        MMMSXXMASM
+        MSAMXMSMSA
+        AMXSXMAAMM
+        MSAMASMSMX
+        XMASAMXAMM
+        XXAMMXXAMA
+        SMSMSASXSS
+        SAXAMASAAA
+        MAMMMXMMMM
+        MXMXAXMASX
+    "};
+
     #[test]
     fn test_word_count() {
-        let grid = indoc! {"\
-            MMMSXXMASM
-            MSAMXMSMSA
-            AMXSXMAAMM
-            MSAMASMSMX
-            XMASAMXAMM
-            XXAMMXXAMA
-            SMSMSASXSS
-            SAXAMASAAA
-            MAMMMXMMMM
-            MXMXAXMASX
-        "};
+        assert_eq!(18, WordSearch::from_str(TEST_GRID).unwrap().word_count("XMAS"));
+    }
 
-        let word_search = WordSearch::from_str(grid).unwrap();
-
-        assert_eq!(18, word_search.word_count("XMAS"));
+    #[test]
+    fn test_cross_count() {
+        assert_eq!(9, WordSearch::from_str(TEST_GRID).unwrap().cross_count());
     }
 }
