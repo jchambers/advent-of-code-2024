@@ -30,6 +30,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
+type PositionAndHeading = ((usize, usize), Heading);
+
 struct GuardMap {
     tiles: Vec<Tile>,
     width: usize,
@@ -90,7 +92,7 @@ impl GuardMap {
         tiles: &[Tile],
         initial_position: (usize, usize),
         initial_heading: Heading,
-    ) -> Result<Vec<((usize, usize), Heading)>, Box<dyn Error>> {
+    ) -> Result<Vec<PositionAndHeading>, Box<dyn Error>> {
         let mut position = initial_position;
         let mut heading = initial_heading;
         let mut visited_tiles = vec![[false; 4]; tiles.len()];
