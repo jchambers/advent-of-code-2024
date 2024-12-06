@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         println!(
             "Positions of new obstacles that would cause a loop: {}",
-            guard_map.looping_obstruction_positions()
+            guard_map.looping_obstruction_positions()?
         );
 
         Ok(())
@@ -40,28 +40,22 @@ struct GuardMap {
 impl GuardMap {
     pub fn visited_tiles(&self) -> Result<u32, Box<dyn Error>> {
         self.simulate_path(&self.tiles)
+            .map(|visited_tiles| visited_tiles.iter().filter(|&&visited| visited).count() as u32)
     }
 
-    pub fn looping_obstruction_positions(&self) -> u32 {
+    pub fn looping_obstruction_positions(&self) -> Result<u32, Box<dyn Error>> {
         let initial_position_index =
             self.tile_index(self.initial_position.0, self.initial_position.1);
 
         let candidate_obstruction_indices: Vec<usize> = self
-            .tiles
+            .simulate_path(&self.tiles)?
             .iter()
             .enumerate()
-            .filter_map(|(index, tile)| {
-                if index == initial_position_index {
-                    None
-                } else if matches!(tile, Empty) {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
+            .filter(|(i, visited)| *i != initial_position_index && **visited)
+            .map(|(i, _)| i)
             .collect();
 
-        candidate_obstruction_indices
+        Ok(candidate_obstruction_indices
             .iter()
             .map(|&obstruction_index| {
                 let mut modified_tiles = self.tiles.clone();
@@ -70,10 +64,10 @@ impl GuardMap {
                 self.simulate_path(&modified_tiles)
             })
             .filter(|result| result.is_err())
-            .count() as u32
+            .count() as u32)
     }
 
-    fn simulate_path(&self, tiles: &[Tile]) -> Result<u32, Box<dyn Error>> {
+    fn simulate_path(&self, tiles: &[Tile]) -> Result<Vec<bool>, Box<dyn Error>> {
         let mut position = self.initial_position;
         let mut heading = Up;
         let mut visited_tiles = vec![[false; 4]; tiles.len()];
@@ -110,10 +104,8 @@ impl GuardMap {
 
         Ok(visited_tiles
             .iter()
-            .filter(|visited_from_directions| {
-                visited_from_directions.iter().any(|&visited| visited)
-            })
-            .count() as u32)
+            .map(|visited_from_directions| visited_from_directions.iter().any(|&visited| visited))
+            .collect())
     }
 
     fn height(&self) -> usize {
@@ -242,6 +234,7 @@ mod test {
             GuardMap::from_str(TEST_MAP)
                 .unwrap()
                 .looping_obstruction_positions()
+                .unwrap()
         );
     }
 }
