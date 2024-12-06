@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs::File;
@@ -33,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 struct ManualUpdater {
-    constraints: HashMap<u32, Vec<u32>>,
+    rules: Vec<Rule>,
     updates: Vec<Vec<u32>>,
 }
 
@@ -50,73 +49,47 @@ impl ManualUpdater {
         self.updates
             .iter()
             .filter(|update| !self.has_correct_order(update))
-            .map(|update| self.repair_update(update))
+            .map(|update| self.expected_order(update))
             .map(|update| update[update.len() / 2])
             .sum()
     }
 
-    fn has_correct_order(&self, update: &[u32]) -> bool {
-        for i in 1..update.len() {
-            if let Some(constraints) = self.constraints.get(&update[i]) {
-                if update[0..i].iter().any(|page| constraints.contains(page)) {
-                    return false;
-                }
+    fn expected_order(&self, update: &[u32]) -> Vec<u32> {
+        let mut unsorted_pages: Vec<u32> = update.to_vec();
+        let mut sorted_pages = Vec::with_capacity(update.len());
+
+        let mut applicable_rules: Vec<&Rule> = self
+            .rules
+            .iter()
+            .filter(|rule| update.contains(&rule.antecedent) && update.contains(&rule.posterior))
+            .collect();
+
+        while !unsorted_pages.is_empty() {
+            if let Some(unconstrained_page) = unsorted_pages
+                .iter()
+                .find(|&&page| !applicable_rules.iter().any(|rule| rule.antecedent == page))
+            {
+                let unconstrained_page = *unconstrained_page;
+
+                sorted_pages.push(unconstrained_page);
+
+                unsorted_pages.remove(unsorted_pages
+                    .iter()
+                    .position(|&page| page == unconstrained_page)
+                    .unwrap());
+
+                applicable_rules.retain(|rule| rule.posterior != unconstrained_page);
+            } else {
+                panic!("Unresolvable constraints")
             }
         }
 
-        true
+        sorted_pages.reverse();
+        sorted_pages
     }
 
-    fn repair_update(&self, update: &[u32]) -> Vec<u32> {
-        let mut unresolved_constraints = HashMap::new();
-
-        update.iter().for_each(|page| {
-            if let Some(constraints) = self.constraints.get(page) {
-                unresolved_constraints.insert(
-                    *page,
-                    constraints
-                        .iter()
-                        .filter(|page| update.contains(page))
-                        .to_owned()
-                        .collect(),
-                );
-            } else {
-                unresolved_constraints.insert(*page, Vec::new());
-            }
-        });
-
-        let mut repaired_update = Vec::with_capacity(update.len());
-
-        while !unresolved_constraints.is_empty() {
-            // One page in the update should have no constraints, and we can push it into the
-            // repaired order
-            if let Some(page) = unresolved_constraints
-                .iter()
-                .filter(|(_, constraints)| constraints.is_empty())
-                .map(|(page, _)| *page)
-                .next()
-            {
-                repaired_update.push(page);
-                unresolved_constraints.remove(&page);
-
-                unresolved_constraints
-                    .iter_mut()
-                    .for_each(|(_, constraints)| {
-                        if let Some(i) = constraints
-                            .iter()
-                            .position(|&&constraint| constraint == page)
-                        {
-                            constraints.remove(i);
-                        }
-                    });
-            } else {
-                panic!("Unresolvable constraints");
-            }
-        }
-
-        repaired_update.reverse();
-
-        repaired_update
+    fn has_correct_order(&self, update: &[u32]) -> bool {
+        update == self.expected_order(update)
     }
 }
 
@@ -124,17 +97,11 @@ impl FromStr for ManualUpdater {
     type Err = Box<dyn Error>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((constraints_block, updates_block)) = s.split_once("\n\n") {
-            let mut constraints = HashMap::new();
-
-            for line in constraints_block.lines() {
-                if let Some((page, before)) = line.split_once('|') {
-                    let page = page.parse::<u32>()?;
-                    let before = before.parse::<u32>()?;
-
-                    constraints.entry(page).or_insert(Vec::new()).push(before);
-                }
-            }
+        if let Some((rules_block, updates_block)) = s.split_once("\n\n") {
+            let rules = rules_block
+                .lines()
+                .map(Rule::from_str)
+                .collect::<Result<Vec<_>, _>>()?;
 
             let updates = updates_block
                 .lines()
@@ -145,12 +112,32 @@ impl FromStr for ManualUpdater {
                 })
                 .collect::<Result<Vec<Vec<u32>>, _>>()?;
 
-            Ok(ManualUpdater {
-                constraints,
-                updates,
-            })
+            Ok(ManualUpdater { rules, updates })
         } else {
             Err("Could not parse constraints/updates".into())
+        }
+    }
+}
+
+struct Rule {
+    antecedent: u32,
+    posterior: u32,
+}
+
+impl FromStr for Rule {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((antecedent, posterior)) = s.split_once('|') {
+            let antecedent = antecedent.parse::<u32>()?;
+            let posterior = posterior.parse::<u32>()?;
+
+            Ok(Rule {
+                antecedent,
+                posterior,
+            })
+        } else {
+            Err("Could not parse rule".into())
         }
     }
 }
@@ -210,20 +197,20 @@ mod test {
     }
 
     #[test]
-    fn test_repair_update() {
+    fn test_expected_order() {
         let manual_updater = ManualUpdater::from_str(TEST_RULES_AND_UPDATES).unwrap();
 
         assert_eq!(
             vec![97, 75, 47, 61, 53],
-            manual_updater.repair_update(&[75, 97, 47, 61, 53])
+            manual_updater.expected_order(&[75, 97, 47, 61, 53])
         );
         assert_eq!(
             vec![61, 29, 13],
-            manual_updater.repair_update(&[61, 13, 29])
+            manual_updater.expected_order(&[61, 13, 29])
         );
         assert_eq!(
             vec![97, 75, 47, 29, 13],
-            manual_updater.repair_update(&[97, 13, 75, 29, 47])
+            manual_updater.expected_order(&[97, 13, 75, 29, 47])
         );
     }
 
