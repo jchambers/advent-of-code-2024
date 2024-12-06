@@ -17,7 +17,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             GuardMap::from_str(&string)?
         };
 
-        println!("Visited tiles: {}", guard_map.visited_tiles());
+        println!("Visited tiles: {}", guard_map.visited_tiles()?);
+
+        println!(
+            "Positions of new obstacles that would cause a loop: {}",
+            guard_map.looping_obstruction_positions()
+        );
 
         Ok(())
     } else {
@@ -33,13 +38,53 @@ struct GuardMap {
 }
 
 impl GuardMap {
-    pub fn visited_tiles(&self) -> u32 {
+    pub fn visited_tiles(&self) -> Result<u32, Box<dyn Error>> {
+        self.simlulate_path(&self.tiles)
+    }
+
+    pub fn looping_obstruction_positions(&self) -> u32 {
+        let initial_position_index =
+            self.tile_index(self.initial_position.0, self.initial_position.1);
+
+        let candidate_obstruction_indices: Vec<usize> = self
+            .tiles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, tile)| {
+                if index == initial_position_index {
+                    None
+                } else if matches!(tile, Empty) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        candidate_obstruction_indices
+            .iter()
+            .map(|&obstruction_index| {
+                let mut modified_tiles = self.tiles.clone();
+                modified_tiles[obstruction_index] = Obstruction;
+
+                self.simlulate_path(&modified_tiles)
+            })
+            .filter(|result| result.is_err())
+            .count() as u32
+    }
+
+    fn simlulate_path(&self, tiles: &[Tile]) -> Result<u32, Box<dyn Error>> {
         let mut position = self.initial_position;
         let mut heading = Up;
-        let mut visited_tiles = vec![false; self.tiles.len()];
+        let mut visited_tiles = vec![[false; 4]; tiles.len()];
 
         loop {
-            visited_tiles[self.tile_index(position.0, position.1)] = true;
+            // Are we in a loop?
+            if visited_tiles[self.tile_index(position.0, position.1)][heading.index()] {
+                return Err("Loop detected".into());
+            }
+
+            visited_tiles[self.tile_index(position.0, position.1)][heading.index()] = true;
 
             // Are we about to exit the map?
             if (heading == Up && position.1 == 0)
@@ -57,13 +102,18 @@ impl GuardMap {
                 Right => (position.0 + 1, position.1),
             };
 
-            match self.tiles[self.tile_index(next_position.0, next_position.1)] {
+            match tiles[self.tile_index(next_position.0, next_position.1)] {
                 Empty => position = next_position,
                 Obstruction => heading = heading.rotate_right(),
             };
         }
 
-        visited_tiles.iter().filter(|&&visited| visited).count() as u32
+        Ok(visited_tiles
+            .iter()
+            .filter(|visited_from_directions| {
+                visited_from_directions.iter().any(|&visited| visited)
+            })
+            .count() as u32)
     }
 
     fn height(&self) -> usize {
@@ -122,6 +172,7 @@ impl FromStr for GuardMap {
     }
 }
 
+#[derive(Copy, Clone)]
 enum Tile {
     Empty,
     Obstruction,
@@ -142,6 +193,15 @@ impl Heading {
             Down => Left,
             Left => Up,
             Right => Down,
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        match self {
+            Up => 0,
+            Down => 1,
+            Left => 2,
+            Right => 3,
         }
     }
 }
@@ -166,6 +226,22 @@ mod test {
 
     #[test]
     fn test_visited_tiles() {
-        assert_eq!(41, GuardMap::from_str(TEST_MAP).unwrap().visited_tiles());
+        assert_eq!(
+            41,
+            GuardMap::from_str(TEST_MAP)
+                .unwrap()
+                .visited_tiles()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_looping_obstruction_positions() {
+        assert_eq!(
+            6,
+            GuardMap::from_str(TEST_MAP)
+                .unwrap()
+                .looping_obstruction_positions()
+        );
     }
 }
