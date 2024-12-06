@@ -95,16 +95,10 @@ impl GuardMap {
     ) -> Result<Vec<PositionAndHeading>, Box<dyn Error>> {
         let mut position = initial_position;
         let mut heading = initial_heading;
-        let mut visited_tiles = vec![[false; 4]; tiles.len()];
+        let mut turns = vec![[false; 4]; tiles.len()];
         let mut path = Vec::new();
 
         loop {
-            // Are we in a loop?
-            if visited_tiles[self.tile_index(position.0, position.1)][heading.index()] {
-                return Err("Loop detected".into());
-            }
-
-            visited_tiles[self.tile_index(position.0, position.1)][heading.index()] = true;
             path.push((position, heading));
 
             // Are we about to exit the map?
@@ -118,10 +112,22 @@ impl GuardMap {
 
             let next_position = Self::next_position(position, heading);
 
-            match tiles[self.tile_index(next_position.0, next_position.1)] {
-                Empty => position = next_position,
-                Obstruction => heading = heading.rotate_right(),
-            };
+            if matches!(
+                tiles[self.tile_index(next_position.0, next_position.1)],
+                Empty
+            ) {
+                position = next_position;
+            } else {
+                // We've bumped into an obstacle; are we in a loop?
+                let index = self.tile_index(position.0, position.1);
+
+                if turns[index][heading.index()] {
+                    return Err("Loop detected".into());
+                }
+
+                turns[index][heading.index()] = true;
+                heading = heading.rotate_right()
+            }
         }
 
         Ok(path)
