@@ -39,38 +39,62 @@ struct GuardMap {
 
 impl GuardMap {
     pub fn visited_tiles(&self) -> Result<u32, Box<dyn Error>> {
-        self.simulate_path(&self.tiles)
-            .map(|visited_tiles| visited_tiles.iter().filter(|&&visited| visited).count() as u32)
+        self.simulate_path(&self.tiles, self.initial_position, Up)
+            .map(|mut path| {
+                path.sort_by_key(|(index, _)| *index);
+                path.dedup_by_key(|(index, _)| *index);
+                path.len() as u32
+            })
     }
 
     pub fn looping_obstruction_positions(&self) -> Result<u32, Box<dyn Error>> {
-        let initial_position_index =
-            self.tile_index(self.initial_position.0, self.initial_position.1);
+        let original_path = self.simulate_path(&self.tiles, self.initial_position, Up)?;
+        let mut placed_obstacle_positions = vec![None; self.tiles.len()];
 
-        let candidate_obstruction_indices: Vec<usize> = self
-            .simulate_path(&self.tiles)?
-            .iter()
-            .enumerate()
-            .filter(|(i, visited)| *i != initial_position_index && **visited)
-            .map(|(i, _)| i)
-            .collect();
+        for (position, heading) in &original_path[0..original_path.len() - 1] {
+            let next_position = Self::next_position(*position, *heading);
+            let next_position_index = self.tile_index(next_position.0, next_position.1);
 
-        Ok(candidate_obstruction_indices
-            .iter()
-            .map(|&obstruction_index| {
+            // Don't try to put an obstacle on the guard's initial position
+            if next_position == self.initial_position {
+                continue;
+            }
+
+            // Regardless of whether it caused a loop, have we tried putting an obstacle on this
+            // tile before? Checking here has the dual benefit of avoiding duplicate work and
+            // avoiding invalid situations where we try to put an obstacle "behind" the guard after
+            // she's started moving.
+            if placed_obstacle_positions[next_position_index].is_some() {
+                continue;
+            }
+
+            if matches!(self.tiles[next_position_index], Empty) {
                 let mut modified_tiles = self.tiles.clone();
-                modified_tiles[obstruction_index] = Obstruction;
+                modified_tiles[next_position_index] = Obstruction;
 
-                self.simulate_path(&modified_tiles)
-            })
-            .filter(|result| result.is_err())
+                placed_obstacle_positions[next_position_index] = Some(
+                    self.simulate_path(&modified_tiles, *position, *heading)
+                        .map_or(true, |_| false),
+                );
+            }
+        }
+
+        Ok(placed_obstacle_positions
+            .iter()
+            .filter(|maybe_caused_loop| matches!(maybe_caused_loop, Some(true)))
             .count() as u32)
     }
 
-    fn simulate_path(&self, tiles: &[Tile]) -> Result<Vec<bool>, Box<dyn Error>> {
-        let mut position = self.initial_position;
-        let mut heading = Up;
+    fn simulate_path(
+        &self,
+        tiles: &[Tile],
+        initial_position: (usize, usize),
+        initial_heading: Heading,
+    ) -> Result<Vec<((usize, usize), Heading)>, Box<dyn Error>> {
+        let mut position = initial_position;
+        let mut heading = initial_heading;
         let mut visited_tiles = vec![[false; 4]; tiles.len()];
+        let mut path = Vec::new();
 
         loop {
             // Are we in a loop?
@@ -79,6 +103,7 @@ impl GuardMap {
             }
 
             visited_tiles[self.tile_index(position.0, position.1)][heading.index()] = true;
+            path.push((position, heading));
 
             // Are we about to exit the map?
             if (heading == Up && position.1 == 0)
@@ -89,12 +114,7 @@ impl GuardMap {
                 break;
             }
 
-            let next_position = match heading {
-                Up => (position.0, position.1 - 1),
-                Down => (position.0, position.1 + 1),
-                Left => (position.0 - 1, position.1),
-                Right => (position.0 + 1, position.1),
-            };
+            let next_position = Self::next_position(position, heading);
 
             match tiles[self.tile_index(next_position.0, next_position.1)] {
                 Empty => position = next_position,
@@ -102,10 +122,16 @@ impl GuardMap {
             };
         }
 
-        Ok(visited_tiles
-            .iter()
-            .map(|visited_from_directions| visited_from_directions.iter().any(|&visited| visited))
-            .collect())
+        Ok(path)
+    }
+
+    fn next_position(position: (usize, usize), heading: Heading) -> (usize, usize) {
+        match heading {
+            Up => (position.0, position.1 - 1),
+            Down => (position.0, position.1 + 1),
+            Left => (position.0 - 1, position.1),
+            Right => (position.0 + 1, position.1),
+        }
     }
 
     fn height(&self) -> usize {
@@ -170,7 +196,7 @@ enum Tile {
     Obstruction,
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 enum Heading {
     Up,
     Down,
