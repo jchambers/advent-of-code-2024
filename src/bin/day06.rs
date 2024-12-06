@@ -39,7 +39,7 @@ struct GuardMap {
 
 impl GuardMap {
     pub fn visited_tiles(&self) -> Result<u32, Box<dyn Error>> {
-        self.simlulate_path(&self.tiles)
+        self.simulate_path(&self.tiles)
     }
 
     pub fn looping_obstruction_positions(&self) -> u32 {
@@ -67,13 +67,13 @@ impl GuardMap {
                 let mut modified_tiles = self.tiles.clone();
                 modified_tiles[obstruction_index] = Obstruction;
 
-                self.simlulate_path(&modified_tiles)
+                self.simulate_path(&modified_tiles)
             })
             .filter(|result| result.is_err())
             .count() as u32
     }
 
-    fn simlulate_path(&self, tiles: &[Tile]) -> Result<u32, Box<dyn Error>> {
+    fn simulate_path(&self, tiles: &[Tile]) -> Result<u32, Box<dyn Error>> {
         let mut position = self.initial_position;
         let mut heading = Up;
         let mut visited_tiles = vec![[false; 4]; tiles.len()];
