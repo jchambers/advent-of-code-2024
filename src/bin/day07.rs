@@ -1,4 +1,4 @@
-use crate::Operator::{Add, Multiply};
+use crate::Operator::{Add, Concat, Multiply};
 use std::env;
 use std::error::Error;
 use std::fs::File;
@@ -15,20 +15,32 @@ fn main() -> Result<(), Box<dyn Error>> {
             .map(|line| CalibrationEquation::from_str(line.as_str()))
             .collect::<Result<Vec<CalibrationEquation>, _>>()?;
 
-        let valid_calibration_sum: u64 = calibration_equations
-            .iter()
-            .filter_map(|equation| {
-                if equation.is_possible() {
-                    Some(equation.test_value)
-                } else {
-                    None
-                }
-            })
-            .sum();
+        println!(
+            "Sum of test values from valid equations with add/multiply: {}",
+            calibration_equations
+                .iter()
+                .filter_map(|equation| {
+                    if equation.is_possible(&[Add, Multiply]) {
+                        Some(equation.test_value)
+                    } else {
+                        None
+                    }
+                })
+                .sum::<u64>()
+        );
 
         println!(
-            "Sum of test values from valid equations: {}",
-            valid_calibration_sum
+            "Sum of test values from valid equations with add/multiply/concat: {}",
+            calibration_equations
+                .iter()
+                .filter_map(|equation| {
+                    if equation.is_possible(&[Add, Multiply, Concat]) {
+                        Some(equation.test_value)
+                    } else {
+                        None
+                    }
+                })
+                .sum::<u64>()
         );
 
         Ok(())
@@ -43,7 +55,7 @@ struct CalibrationEquation {
 }
 
 impl CalibrationEquation {
-    fn is_possible(&self) -> bool {
+    fn is_possible(&self, allowed_operators: &[Operator]) -> bool {
         if self.numbers.is_empty() {
             return false;
         }
@@ -52,34 +64,32 @@ impl CalibrationEquation {
             return self.numbers[0] as u64 == self.test_value;
         }
 
-        let mut operators = vec![Add; self.numbers.len() - 1];
-        let mut stack = vec![(0, Add), (0, Multiply)];
+        OperatorSequence::new(self.numbers.len() - 1, allowed_operators)
+            .any(|operators| Self::evaluate(&self.numbers, &operators) == self.test_value)
+    }
 
-        while let Some((level, operator)) = stack.pop() {
-            operators[level] = operator;
+    fn evaluate(numbers: &[u32], operators: &[Operator]) -> u64 {
+        if numbers.len() != operators.len() + 1 {
+            panic!("Mismatched operators/numbers lengths");
+        }
 
-            if level == self.numbers.len() - 2 {
-                // We've hit the bottom of the tree and should evaluate
-                let mut result: u64 = self.numbers[0] as u64;
+        let mut result: u64 = numbers[0] as u64;
 
-                for i in 0..operators.len() {
-                    result = match operators[i] {
-                        Add => result + self.numbers[i + 1] as u64,
-                        Multiply => result * self.numbers[i + 1] as u64,
+        for i in 0..operators.len() {
+            match operators[i] {
+                Add => result += numbers[i + 1] as u64,
+                Multiply => result *= numbers[i + 1] as u64,
+                Concat => {
+                    for _ in 0..=numbers[i + 1].ilog10() {
+                        result *= 10;
                     }
-                }
 
-                if result == self.test_value {
-                    return true;
+                    result += numbers[i + 1] as u64
                 }
-            } else {
-                // Continue exploring
-                stack.push((level + 1, Add));
-                stack.push((level + 1, Multiply));
             }
         }
 
-        false
+        result
     }
 }
 
@@ -103,10 +113,54 @@ impl FromStr for CalibrationEquation {
     }
 }
 
-#[derive(Copy, Clone)]
+struct OperatorSequence {
+    len: usize,
+    allowed_operators: Vec<Operator>,
+    sequence: Vec<Operator>,
+    stack: Vec<(usize, Operator)>,
+}
+
+impl OperatorSequence {
+    pub fn new(len: usize, allowed_operators: &[Operator]) -> Self {
+        Self {
+            len,
+            allowed_operators: allowed_operators.to_vec(),
+            sequence: vec![allowed_operators[0]; len],
+            stack: allowed_operators
+                .iter()
+                .map(|&operator| (0, operator))
+                .collect(),
+        }
+    }
+}
+
+impl Iterator for OperatorSequence {
+    type Item = Vec<Operator>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((level, operator)) = self.stack.pop() {
+            self.sequence[level] = operator;
+
+            if level == self.len - 1 {
+                // We've hit the bottom of the "tree" and should yield a result
+                return Some(self.sequence.clone());
+            } else {
+                // We're somewhere in the middle and should keep exploring
+                self.allowed_operators
+                    .iter()
+                    .for_each(|&operator| self.stack.push((level + 1, operator)));
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 enum Operator {
     Add,
     Multiply,
+    Concat,
 }
 
 #[cfg(test)]
@@ -117,38 +171,77 @@ mod test {
     fn test_is_possible() {
         assert!(CalibrationEquation::from_str("190: 10 19")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(CalibrationEquation::from_str("3267: 81 40 27")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(!CalibrationEquation::from_str("83: 17 5")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(!CalibrationEquation::from_str("156: 15 6")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(!CalibrationEquation::from_str("7290: 6 8 6 15")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(!CalibrationEquation::from_str("161011: 16 10 13")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(!CalibrationEquation::from_str("192: 17 8 14")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(!CalibrationEquation::from_str("21037: 9 7 18 13")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
 
         assert!(CalibrationEquation::from_str("292: 11 6 16 20")
             .unwrap()
-            .is_possible());
+            .is_possible(&[Add, Multiply]));
+    }
+
+    #[test]
+    fn test_is_possible_with_concat() {
+        assert!(CalibrationEquation::from_str("190: 10 19")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(CalibrationEquation::from_str("3267: 81 40 27")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(!CalibrationEquation::from_str("83: 17 5")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(CalibrationEquation::from_str("156: 15 6")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(CalibrationEquation::from_str("7290: 6 8 6 15")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(!CalibrationEquation::from_str("161011: 16 10 13")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(CalibrationEquation::from_str("192: 17 8 14")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(!CalibrationEquation::from_str("21037: 9 7 18 13")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
+
+        assert!(CalibrationEquation::from_str("292: 11 6 16 20")
+            .unwrap()
+            .is_possible(&[Add, Multiply, Concat]));
     }
 }
