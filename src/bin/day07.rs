@@ -17,30 +17,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         println!(
             "Sum of test values from valid equations with add/multiply: {}",
-            calibration_equations
-                .iter()
-                .filter_map(|equation| {
-                    if equation.is_possible(&[Add, Multiply]) {
-                        Some(equation.test_value)
-                    } else {
-                        None
-                    }
-                })
-                .sum::<u64>()
+            valid_calibration_sum(&calibration_equations, &[Add, Multiply])
         );
 
         println!(
             "Sum of test values from valid equations with add/multiply/concat: {}",
-            calibration_equations
-                .iter()
-                .filter_map(|equation| {
-                    if equation.is_possible(&[Add, Multiply, Concat]) {
-                        Some(equation.test_value)
-                    } else {
-                        None
-                    }
-                })
-                .sum::<u64>()
+            valid_calibration_sum(&calibration_equations, &[Add, Multiply, Concat])
         );
 
         Ok(())
@@ -49,47 +31,58 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
+fn valid_calibration_sum(
+    calibration_equations: &[CalibrationEquation],
+    allowed_operators: &[Operator],
+) -> u64 {
+    calibration_equations
+        .iter()
+        .filter_map(|equation| {
+            if equation.is_possible(allowed_operators) {
+                Some(equation.test_value)
+            } else {
+                None
+            }
+        })
+        .sum()
+}
+
 struct CalibrationEquation {
     test_value: u64,
-    numbers: Vec<u32>,
+    numbers: Vec<u64>,
 }
 
 impl CalibrationEquation {
     fn is_possible(&self, allowed_operators: &[Operator]) -> bool {
-        if self.numbers.is_empty() {
-            return false;
-        }
+        let mut stack = vec![(0, self.numbers[0])];
 
-        if self.numbers.len() == 1 {
-            return self.numbers[0] as u64 == self.test_value;
-        }
+        while let Some((level, total)) = stack.pop() {
+            // All operators embiggen the total; if we've already overshot the target, stop
+            // exploring the branch.
+            if total > self.test_value {
+                continue;
+            }
 
-        OperatorSequence::new(self.numbers.len() - 1, allowed_operators)
-            .any(|operators| Self::evaluate(&self.numbers, &operators) == self.test_value)
-    }
-
-    fn evaluate(numbers: &[u32], operators: &[Operator]) -> u64 {
-        if numbers.len() != operators.len() + 1 {
-            panic!("Mismatched operators/numbers lengths");
-        }
-
-        let mut result: u64 = numbers[0] as u64;
-
-        for i in 0..operators.len() {
-            match operators[i] {
-                Add => result += numbers[i + 1] as u64,
-                Multiply => result *= numbers[i + 1] as u64,
-                Concat => {
-                    for _ in 0..=numbers[i + 1].ilog10() {
-                        result *= 10;
-                    }
-
-                    result += numbers[i + 1] as u64
+            if level == self.numbers.len() - 1 {
+                if total == self.test_value {
+                    return true;
                 }
+            } else {
+                let next = self.numbers[level + 1];
+
+                stack.extend(allowed_operators.iter().map(|operator| {
+                    let next_total = match operator {
+                        Add => total + next,
+                        Multiply => total * next,
+                        Concat => (total * 10u64.pow(next.ilog10() + 1)) + next,
+                    };
+
+                    (level + 1, next_total)
+                }));
             }
         }
 
-        result
+        false
     }
 }
 
@@ -100,7 +93,7 @@ impl FromStr for CalibrationEquation {
         if let Some((test_value, numbers)) = s.split_once(": ") {
             let numbers = numbers
                 .split_whitespace()
-                .map(|number| number.parse::<u32>())
+                .map(|number| number.parse::<u64>())
                 .collect::<Result<Vec<_>, _>>()?;
 
             Ok(CalibrationEquation {
@@ -110,49 +103,6 @@ impl FromStr for CalibrationEquation {
         } else {
             Err("Could not parse calibration equation".into())
         }
-    }
-}
-
-struct OperatorSequence {
-    len: usize,
-    allowed_operators: Vec<Operator>,
-    sequence: Vec<Operator>,
-    stack: Vec<(usize, Operator)>,
-}
-
-impl OperatorSequence {
-    pub fn new(len: usize, allowed_operators: &[Operator]) -> Self {
-        Self {
-            len,
-            allowed_operators: allowed_operators.to_vec(),
-            sequence: vec![allowed_operators[0]; len],
-            stack: allowed_operators
-                .iter()
-                .map(|&operator| (0, operator))
-                .collect(),
-        }
-    }
-}
-
-impl Iterator for OperatorSequence {
-    type Item = Vec<Operator>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some((level, operator)) = self.stack.pop() {
-            self.sequence[level] = operator;
-
-            if level == self.len - 1 {
-                // We've hit the bottom of the "tree" and should yield a result
-                return Some(self.sequence.clone());
-            } else {
-                // We're somewhere in the middle and should keep exploring
-                self.allowed_operators
-                    .iter()
-                    .for_each(|&operator| self.stack.push((level + 1, operator)));
-            }
-        }
-
-        None
     }
 }
 
