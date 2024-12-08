@@ -10,6 +10,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let antenna_map = AntennaMap::from_str(fs::read_to_string(path)?.as_str())?;
 
         println!("Antinodes: {}", antenna_map.distinct_antinodes());
+        println!(
+            "Antinodes with harmonics: {}",
+            antenna_map.distinct_antinodes_with_harmonics()
+        );
 
         Ok(())
     } else {
@@ -25,6 +29,13 @@ struct AntennaMap {
 impl AntennaMap {
     pub fn distinct_antinodes(&self) -> usize {
         self.antinodes()
+            .iter()
+            .filter(|&&antinode| antinode)
+            .count()
+    }
+
+    pub fn distinct_antinodes_with_harmonics(&self) -> usize {
+        self.antinodes_with_harmonics()
             .iter()
             .filter(|&&antinode| antinode)
             .count()
@@ -54,12 +65,63 @@ impl AntennaMap {
                         antenna_indices[i + 1..].iter().for_each(|&other| {
                             let delta = self.position(other) - start;
 
-                            if let Some(antinode) = self.index(&(start - delta)) {
+                            if let Some(antinode) = self.index(start - delta) {
                                 antinodes[antinode] = true;
                             }
 
-                            if let Some(antinode) = self.index(&(start + (delta * 2))) {
+                            if let Some(antinode) = self.index(start + (delta * 2)) {
                                 antinodes[antinode] = true;
+                            }
+                        })
+                    }
+                }
+            });
+
+        antinodes
+    }
+
+    fn antinodes_with_harmonics(&self) -> Vec<bool> {
+        let mut explored_frequencies = Vec::new();
+        let mut antinodes = vec![false; self.frequencies.len()];
+
+        self.frequencies
+            .iter()
+            .filter_map(|&frequency| frequency)
+            .for_each(|frequency| {
+                if !explored_frequencies.contains(&frequency) {
+                    explored_frequencies.push(frequency);
+
+                    let antenna_indices: Vec<usize> = self
+                        .frequencies
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, f)| if f == &Some(frequency) { Some(i) } else { None })
+                        .collect();
+
+                    for i in 0..antenna_indices.len() - 1 {
+                        let start = self.position(antenna_indices[i]);
+
+                        antenna_indices[i + 1..].iter().for_each(|&other| {
+                            let delta = self.position(other) - start;
+
+                            {
+                                let mut multiplier = 0;
+
+                                while let Some(antinode) = self.index(start - (delta * multiplier))
+                                {
+                                    antinodes[antinode] = true;
+                                    multiplier += 1;
+                                }
+                            }
+
+                            {
+                                let mut multiplier = 0;
+
+                                while let Some(antinode) = self.index(start + (delta * multiplier))
+                                {
+                                    antinodes[antinode] = true;
+                                    multiplier += 1;
+                                }
                             }
                         })
                     }
@@ -76,7 +138,7 @@ impl AntennaMap {
         }
     }
 
-    fn index(&self, position: &Vector) -> Option<usize> {
+    fn index(&self, position: Vector) -> Option<usize> {
         if position.x < 0
             || position.x >= self.width as i32
             || position.y < 0
@@ -184,6 +246,16 @@ mod test {
         assert_eq!(
             14,
             AntennaMap::from_str(TEST_MAP).unwrap().distinct_antinodes()
+        );
+    }
+
+    #[test]
+    fn test_distinct_antinodes_with_harmonics() {
+        assert_eq!(
+            34,
+            AntennaMap::from_str(TEST_MAP)
+                .unwrap()
+                .distinct_antinodes_with_harmonics()
         );
     }
 }
