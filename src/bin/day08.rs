@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::error::Error;
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
@@ -42,93 +43,80 @@ impl AntennaMap {
     }
 
     fn antinodes(&self) -> Vec<bool> {
-        let mut explored_frequencies = Vec::new();
         let mut antinodes = vec![false; self.frequencies.len()];
 
-        self.frequencies
-            .iter()
-            .filter_map(|&frequency| frequency)
-            .for_each(|frequency| {
-                if !explored_frequencies.contains(&frequency) {
-                    explored_frequencies.push(frequency);
+        self.distinct_frequencies().iter().for_each(|&frequency| {
+            let antenna_indices = self.antenna_indices(frequency);
 
-                    let antenna_indices: Vec<usize> = self
-                        .frequencies
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, f)| if f == &Some(frequency) { Some(i) } else { None })
-                        .collect();
+            for i in 0..antenna_indices.len() - 1 {
+                let start = self.position(antenna_indices[i]);
 
-                    for i in 0..antenna_indices.len() - 1 {
-                        let start = self.position(antenna_indices[i]);
+                antenna_indices[i + 1..].iter().for_each(|&other| {
+                    let delta = self.position(other) - start;
 
-                        antenna_indices[i + 1..].iter().for_each(|&other| {
-                            let delta = self.position(other) - start;
-
-                            if let Some(antinode) = self.index(start - delta) {
-                                antinodes[antinode] = true;
-                            }
-
-                            if let Some(antinode) = self.index(start + (delta * 2)) {
-                                antinodes[antinode] = true;
-                            }
-                        })
+                    if let Some(antinode) = self.index(start - delta) {
+                        antinodes[antinode] = true;
                     }
-                }
-            });
+
+                    if let Some(antinode) = self.index(start + (delta * 2)) {
+                        antinodes[antinode] = true;
+                    }
+                })
+            }
+        });
 
         antinodes
     }
 
     fn antinodes_with_harmonics(&self) -> Vec<bool> {
-        let mut explored_frequencies = Vec::new();
         let mut antinodes = vec![false; self.frequencies.len()];
 
+        self.distinct_frequencies().iter().for_each(|&frequency| {
+            let antenna_indices = self.antenna_indices(frequency);
+
+            for i in 0..antenna_indices.len() - 1 {
+                let start = self.position(antenna_indices[i]);
+
+                antenna_indices[i + 1..].iter().for_each(|&other| {
+                    let delta = self.position(other) - start;
+
+                    {
+                        let mut multiplier = 0;
+
+                        while let Some(antinode) = self.index(start - (delta * multiplier)) {
+                            antinodes[antinode] = true;
+                            multiplier += 1;
+                        }
+                    }
+
+                    {
+                        let mut multiplier = 0;
+
+                        while let Some(antinode) = self.index(start + (delta * multiplier)) {
+                            antinodes[antinode] = true;
+                            multiplier += 1;
+                        }
+                    }
+                })
+            }
+        });
+
+        antinodes
+    }
+
+    fn distinct_frequencies(&self) -> HashSet<char> {
         self.frequencies
             .iter()
             .filter_map(|&frequency| frequency)
-            .for_each(|frequency| {
-                if !explored_frequencies.contains(&frequency) {
-                    explored_frequencies.push(frequency);
+            .collect()
+    }
 
-                    let antenna_indices: Vec<usize> = self
-                        .frequencies
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, f)| if f == &Some(frequency) { Some(i) } else { None })
-                        .collect();
-
-                    for i in 0..antenna_indices.len() - 1 {
-                        let start = self.position(antenna_indices[i]);
-
-                        antenna_indices[i + 1..].iter().for_each(|&other| {
-                            let delta = self.position(other) - start;
-
-                            {
-                                let mut multiplier = 0;
-
-                                while let Some(antinode) = self.index(start - (delta * multiplier))
-                                {
-                                    antinodes[antinode] = true;
-                                    multiplier += 1;
-                                }
-                            }
-
-                            {
-                                let mut multiplier = 0;
-
-                                while let Some(antinode) = self.index(start + (delta * multiplier))
-                                {
-                                    antinodes[antinode] = true;
-                                    multiplier += 1;
-                                }
-                            }
-                        })
-                    }
-                }
-            });
-
-        antinodes
+    fn antenna_indices(&self, frequency: char) -> Vec<usize> {
+        self.frequencies
+            .iter()
+            .enumerate()
+            .filter_map(|(i, f)| if f == &Some(frequency) { Some(i) } else { None })
+            .collect()
     }
 
     fn position(&self, index: usize) -> Vector {
