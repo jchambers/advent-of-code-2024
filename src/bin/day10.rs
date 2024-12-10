@@ -25,35 +25,19 @@ struct TrailMap {
 
 impl TrailMap {
     pub fn score(&self) -> u32 {
-        let trailheads: Vec<usize> = self
-            .elevations
-            .iter()
-            .enumerate()
-            .filter_map(|(i, elevation)| if *elevation == 0 { Some(i) } else { None })
-            .collect();
-
         let mut score = 0;
 
-        for trailhead in trailheads {
+        for trailhead in self.trailheads() {
             let mut stack = vec![trailhead];
             let mut summits = HashSet::new();
 
             while let Some(i) = stack.pop() {
-                let elevation = self.elevations[i];
-
-                if elevation == 9 {
+                if self.elevations[i] == 9 {
                     // We've found a summit; stop exploring
                     summits.insert(i);
-                    continue;
+                } else {
+                    stack.extend(self.neighbors_with_elevation(i, self.elevations[i] + 1));
                 }
-
-                stack.extend(self.neighbors(i).iter().filter_map(|&i| {
-                    if self.elevations[i] == elevation + 1 {
-                        Some(i)
-                    } else {
-                        None
-                    }
-                }));
             }
 
             score += summits.len() as u32;
@@ -62,32 +46,17 @@ impl TrailMap {
         score
     }
 
-    fn rating(&self) -> u32 {
-        let mut stack: Vec<usize> = self
-            .elevations
-            .iter()
-            .enumerate()
-            .filter_map(|(i, elevation)| if *elevation == 0 { Some(i) } else { None })
-            .collect();
-
+    pub fn rating(&self) -> u32 {
+        let mut stack: Vec<usize> = self.trailheads();
         let mut rating = 0;
 
         while let Some(i) = stack.pop() {
-            let elevation = self.elevations[i];
-
-            if elevation == 9 {
+            if self.elevations[i] == 9 {
                 // We've found a summit; stop exploring
                 rating += 1;
-                continue;
+            } else {
+                stack.extend(self.neighbors_with_elevation(i, self.elevations[i] + 1));
             }
-
-            stack.extend(self.neighbors(i).iter().filter_map(|&i| {
-                if self.elevations[i] == elevation + 1 {
-                    Some(i)
-                } else {
-                    None
-                }
-            }));
         }
 
         rating
@@ -97,25 +66,33 @@ impl TrailMap {
         self.elevations.len() / self.width
     }
 
-    fn neighbors(&self, index: usize) -> Vec<usize> {
+    fn trailheads(&self) -> Vec<usize> {
+        self.elevations
+            .iter()
+            .enumerate()
+            .filter_map(|(i, elevation)| if *elevation == 0 { Some(i) } else { None })
+            .collect()
+    }
+
+    fn neighbors_with_elevation(&self, index: usize, elevation: u8) -> Vec<usize> {
         let x = index % self.width;
         let y = index / self.width;
 
         let mut neighbors = Vec::with_capacity(4);
 
-        if x > 0 {
+        if x > 0 && self.elevations[index - 1] == elevation {
             neighbors.push(index - 1);
         }
 
-        if x < self.width - 1 {
+        if x < self.width - 1 && self.elevations[index + 1] == elevation {
             neighbors.push(index + 1);
         }
 
-        if y > 0 {
+        if y > 0 && self.elevations[index - self.width] == elevation {
             neighbors.push(index - self.width);
         }
 
-        if y < self.height() - 1 {
+        if y < self.height() - 1 && self.elevations[index + self.width] == elevation {
             neighbors.push(index + self.width);
         }
 
