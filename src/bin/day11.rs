@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::str::FromStr;
 use std::{env, fs};
@@ -6,19 +7,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
     if let Some(path) = args.get(1) {
-        let pebble_line = PebbleLine::from_str(fs::read_to_string(path)?.as_str())?;
+        let mut pebble_line = PebbleLine::from_str(fs::read_to_string(path)?.as_str())?;
 
-        let pebble_count = {
-            let mut evolved_line = pebble_line.clone();
+        println!(
+            "Pebbles after 25 blinks: {}",
+            pebble_line.total_pebbles_after_blinks(25)
+        );
 
-            for _ in 0..25 {
-                evolved_line = evolved_line.evolve();
-            }
-
-            evolved_line.pebbles.len()
-        };
-
-        println!("Pebbles after 25 blinks: {}", pebble_count);
+        println!(
+            "Pebbles after 75 blinks: {}",
+            pebble_line.total_pebbles_after_blinks(75)
+        );
 
         Ok(())
     } else {
@@ -29,26 +28,52 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[derive(Clone)]
 struct PebbleLine {
     pebbles: Vec<u64>,
+    cache: HashMap<(u64, usize), u64>,
 }
 
 impl PebbleLine {
-    fn evolve(self) -> Self {
-        let mut next = Vec::new();
+    pub fn total_pebbles_after_blinks(&mut self, blinks: usize) -> u64 {
+        self.pebbles
+            .clone()
+            .iter()
+            .map(|&pebble| self.pebbles_after_blinks(pebble, blinks))
+            .sum()
+    }
 
-        for pebble in self.pebbles {
-            if pebble == 0 {
-                next.push(1);
-            } else if pebble.ilog10() % 2 != 0 {
-                let mask = 10u64.pow((pebble.ilog10() + 1) / 2);
+    fn pebbles_after_blinks(&mut self, pebble: u64, blinks: usize) -> u64 {
+        if blinks == 0 {
+            1
+        } else if let Some(&pebbles) = self.cache.get(&(pebble, blinks)) {
+            pebbles
+        } else {
+            let pebbles = if pebble == 0 {
+                self.pebbles_after_blinks(1, blinks - 1)
+            } else if Self::has_even_decimal_digits(pebble) {
+                let (left, right) = Self::split_pebble(pebble);
 
-                next.push(pebble / mask);
-                next.push(pebble % ((pebble / mask) * mask));
+                self.pebbles_after_blinks(left, blinks - 1)
+                    + self.pebbles_after_blinks(right, blinks - 1)
             } else {
-                next.push(pebble * 2024);
-            }
-        }
+                self.pebbles_after_blinks(pebble * 2024, blinks - 1)
+            };
 
-        PebbleLine { pebbles: next }
+            self.cache.insert((pebble, blinks), pebbles);
+
+            pebbles
+        }
+    }
+
+    fn has_even_decimal_digits(pebble: u64) -> bool {
+        pebble.ilog10() % 2 != 0
+    }
+
+    fn split_pebble(pebble: u64) -> (u64, u64) {
+        let mask = 10u64.pow((pebble.ilog10() + 1) / 2);
+
+        let left = pebble / mask;
+        let right = pebble % (left * mask);
+
+        (left, right)
     }
 }
 
@@ -61,7 +86,10 @@ impl FromStr for PebbleLine {
             .map(|p| p.parse::<u64>())
             .collect::<Result<_, _>>()?;
 
-        Ok(PebbleLine { pebbles })
+        Ok(PebbleLine {
+            pebbles,
+            cache: HashMap::new(),
+        })
     }
 }
 
@@ -72,37 +100,23 @@ mod test {
     const TEST_PEBBLE_LINE: &str = "125 17";
 
     #[test]
-    fn test_evolve() {
-        let pebble_line = PebbleLine::from_str(TEST_PEBBLE_LINE).unwrap();
+    fn test_has_even_decimal_digits() {
+        assert!(!PebbleLine::has_even_decimal_digits(1));
+        assert!(PebbleLine::has_even_decimal_digits(12));
+        assert!(!PebbleLine::has_even_decimal_digits(123));
+    }
 
-        let pebble_line = pebble_line.evolve();
-        assert_eq!(vec![253000, 1, 7], pebble_line.pebbles);
+    #[test]
+    fn test_split_pebble() {
+        assert_eq!((1, 2), PebbleLine::split_pebble(12));
+        assert_eq!((123, 456), PebbleLine::split_pebble(123456));
+    }
 
-        let pebble_line = pebble_line.evolve();
-        assert_eq!(vec![253, 0, 2024, 14168], pebble_line.pebbles);
+    #[test]
+    fn test_total_pebbles_after_blinks() {
+        let mut pebble_line = PebbleLine::from_str(TEST_PEBBLE_LINE).unwrap();
 
-        let pebble_line = pebble_line.evolve();
-        assert_eq!(vec![512072, 1, 20, 24, 28676032], pebble_line.pebbles);
-
-        let pebble_line = pebble_line.evolve();
-        assert_eq!(
-            vec![512, 72, 2024, 2, 0, 2, 4, 2867, 6032],
-            pebble_line.pebbles
-        );
-
-        let pebble_line = pebble_line.evolve();
-        assert_eq!(
-            vec![1036288, 7, 2, 20, 24, 4048, 1, 4048, 8096, 28, 67, 60, 32],
-            pebble_line.pebbles
-        );
-
-        let pebble_line = pebble_line.evolve();
-        assert_eq!(
-            vec![
-                2097446912, 14168, 4048, 2, 0, 2, 4, 40, 48, 2024, 40, 48, 80, 96, 2, 8, 6, 7, 6,
-                0, 3, 2
-            ],
-            pebble_line.pebbles
-        );
+        assert_eq!(22, pebble_line.total_pebbles_after_blinks(6));
+        assert_eq!(55312, pebble_line.total_pebbles_after_blinks(25));
     }
 }
