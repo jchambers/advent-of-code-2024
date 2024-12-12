@@ -10,6 +10,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         println!("Fencing cost: {}", garden_map.fencing_cost());
 
+        println!(
+            "Fencing cost with discount: {}",
+            garden_map.fencing_cost_with_discount()
+        );
+
         Ok(())
     } else {
         Err("Usage: day12 INPUT_FILE_PATH".into())
@@ -42,6 +47,77 @@ impl GardenMap {
                 region.len() as u32 * perimeter
             })
             .sum()
+    }
+
+    pub fn fencing_cost_with_discount(&self) -> u32 {
+        self.regions()
+            .iter()
+            .map(|region| self.sides(region) * region.len() as u32)
+            .sum()
+    }
+
+    fn sides(&self, region: &[usize]) -> u32 {
+        let mut sides = 0;
+
+        // Find horizontal sides
+        for y in 0..self.height() {
+            let mut top_fences = Vec::with_capacity(self.width);
+            let mut bottom_fences = Vec::with_capacity(self.width);
+
+            for x in 0..self.width {
+                if region.contains(&self.index((x, y))) {
+                    top_fences.push(y == 0 || !region.contains(&self.index((x, y - 1))));
+                    bottom_fences
+                        .push(y == self.height() - 1 || !region.contains(&self.index((x, y + 1))));
+                } else {
+                    top_fences.push(false);
+                    bottom_fences.push(false);
+                }
+            }
+
+            sides += Self::segments(&top_fences) + Self::segments(&bottom_fences);
+        }
+
+        // Find vertical sides
+        for x in 0..self.width {
+            let mut left_fences = Vec::with_capacity(self.height());
+            let mut right_fences = Vec::with_capacity(self.height());
+
+            for y in 0..self.height() {
+                if region.contains(&self.index((x, y))) {
+                    left_fences.push(x == 0 || !region.contains(&self.index((x - 1, y))));
+                    right_fences
+                        .push(x == self.width - 1 || !region.contains(&self.index((x + 1, y))));
+                } else {
+                    left_fences.push(false);
+                    right_fences.push(false);
+                }
+            }
+
+            sides += Self::segments(&left_fences) + Self::segments(&right_fences);
+        }
+
+        sides
+    }
+
+    fn segments(fences: &[bool]) -> u32 {
+        let mut segments = 0;
+
+        let mut previous = false;
+
+        for &fence in fences {
+            if previous && !fence {
+                segments += 1;
+            }
+
+            previous = fence;
+        }
+
+        if previous {
+            segments += 1;
+        }
+
+        segments
     }
 
     fn regions(&self) -> Vec<Vec<usize>> {
@@ -85,9 +161,12 @@ impl GardenMap {
         (index % self.width, index / self.width)
     }
 
+    fn index(&self, position: (usize, usize)) -> usize {
+        (self.width * position.1) + position.0
+    }
+
     fn neighbors(&self, index: usize) -> Vec<usize> {
-        let x = index % self.width;
-        let y = index / self.width;
+        let (x, y) = self.position(index);
 
         let mut neighbors = Vec::with_capacity(4);
 
@@ -153,5 +232,11 @@ mod test {
     fn test_fencing_cost() {
         let garden_map = GardenMap::from_str(TEST_MAP).unwrap();
         assert_eq!(1930, garden_map.fencing_cost());
+    }
+
+    #[test]
+    fn test_fencing_cost_with_discount() {
+        let garden_map = GardenMap::from_str(TEST_MAP).unwrap();
+        assert_eq!(1206, garden_map.fencing_cost_with_discount());
     }
 }
