@@ -23,8 +23,30 @@ struct GardenMap {
 
 impl GardenMap {
     pub fn fencing_cost(&self) -> u32 {
+        self.regions()
+            .iter()
+            .map(|region| {
+                let vegetable = self.vegetables[*region.first().unwrap()];
+
+                let perimeter: u32 = region
+                    .iter()
+                    .map(|&i| {
+                        4 - self
+                            .neighbors(i)
+                            .iter()
+                            .filter(|&&n| self.vegetables[n] == vegetable)
+                            .count() as u32
+                    })
+                    .sum();
+
+                region.len() as u32 * perimeter
+            })
+            .sum()
+    }
+
+    fn regions(&self) -> Vec<Vec<usize>> {
         let mut mapped_regions = vec![false; self.vegetables.len()];
-        let mut fencing_cost = 0;
+        let mut regions = Vec::new();
 
         while let Some(start) = mapped_regions.iter().position(|mapped| !mapped) {
             let vegetable = self.vegetables[start];
@@ -32,8 +54,7 @@ impl GardenMap {
             let mut stack = vec![start];
             let mut explored = mapped_regions.clone();
 
-            let mut area = 0;
-            let mut perimeter = 0;
+            let mut region = Vec::new();
 
             while let Some(i) = stack.pop() {
                 if explored[i] {
@@ -44,27 +65,24 @@ impl GardenMap {
 
                 if self.vegetables[i] == vegetable {
                     mapped_regions[i] = true;
-                    area += 1;
+                    region.push(i);
 
-                    let neighbors = self.neighbors(i);
-
-                    perimeter += 4 - neighbors
-                        .iter()
-                        .filter(|&&n| self.vegetables[n] == vegetable)
-                        .count() as u32;
-
-                    stack.extend(neighbors.iter());
+                    stack.extend(self.neighbors(i).iter());
                 }
             }
 
-            fencing_cost += area * perimeter;
+            regions.push(region);
         }
 
-        fencing_cost
+        regions
     }
 
     fn height(&self) -> usize {
         self.vegetables.len() / self.width
+    }
+
+    fn position(&self, index: usize) -> (usize, usize) {
+        (index % self.width, index / self.width)
     }
 
     fn neighbors(&self, index: usize) -> Vec<usize> {
