@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::{env, fs};
 
@@ -58,13 +59,14 @@ impl GardenMap {
 
     fn sides(&self, region: &[usize]) -> u32 {
         let mut sides = 0;
+        let (x_range, y_range) = self.bounding_box(region);
 
         // Find horizontal sides
-        for y in 0..self.height() {
+        for y in y_range.clone() {
             let mut top_fences = Vec::with_capacity(self.width);
             let mut bottom_fences = Vec::with_capacity(self.width);
 
-            for x in 0..self.width {
+            for x in x_range.clone() {
                 if region.contains(&self.index((x, y))) {
                     top_fences.push(y == 0 || !region.contains(&self.index((x, y - 1))));
                     bottom_fences
@@ -79,11 +81,11 @@ impl GardenMap {
         }
 
         // Find vertical sides
-        for x in 0..self.width {
+        for x in x_range.clone() {
             let mut left_fences = Vec::with_capacity(self.height());
             let mut right_fences = Vec::with_capacity(self.height());
 
-            for y in 0..self.height() {
+            for y in y_range.clone() {
                 if region.contains(&self.index((x, y))) {
                     left_fences.push(x == 0 || !region.contains(&self.index((x - 1, y))));
                     right_fences
@@ -118,6 +120,22 @@ impl GardenMap {
         }
 
         segments
+    }
+
+    fn bounding_box(&self, region: &[usize]) -> (RangeInclusive<usize>, RangeInclusive<usize>) {
+        let mut x_min = usize::MAX;
+        let mut x_max = usize::MIN;
+        let mut y_min = usize::MAX;
+        let mut y_max = usize::MIN;
+
+        region.iter().map(|&i| self.position(i)).for_each(|(x, y)| {
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+        });
+
+        (x_min..=x_max, y_min..=y_max)
     }
 
     fn regions(&self) -> Vec<Vec<usize>> {
