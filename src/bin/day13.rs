@@ -1,20 +1,33 @@
 use std::error::Error;
-use std::ops::{Add, Mul};
 use std::str::FromStr;
 use std::{env, fs};
+
+const BUTTON_A_TOKENS: i64 = 3;
+const BUTTON_B_TOKENS: i64 = 1;
+
+const UNIT_CORRECTION: i64 = 10000000000000;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
     if let Some(path) = args.get(1) {
-        let claw_machines = ClawGame::machines_from_str(fs::read_to_string(path)?.as_str())?;
-
         println!(
             "Min tokens to win all possible prizes: {}",
-            claw_machines
+            ClawMachine::machines_from_str(fs::read_to_string(path)?.as_str())?
                 .iter()
                 .map(|machine| machine.min_tokens_to_win().unwrap_or(0))
-                .sum::<u32>()
+                .sum::<u64>()
+        );
+
+        println!(
+            "Min tokens to win all possible prizes with unit correction: {}",
+            ClawMachine::machines_from_str_with_unit_correction(
+                fs::read_to_string(path)?.as_str(),
+                UNIT_CORRECTION
+            )?
+            .iter()
+            .map(|machine| machine.min_tokens_to_win().unwrap_or(0))
+            .sum::<u64>()
         );
 
         Ok(())
@@ -23,29 +36,54 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-struct ClawGame {
+type Vector2d = (i64, i64);
+
+struct ClawMachine {
     buttons: [Vector2d; 2],
     prize: Vector2d,
 }
 
-impl ClawGame {
+impl ClawMachine {
     pub fn machines_from_str(s: &str) -> Result<Vec<Self>, Box<dyn Error>> {
-        s.split("\n\n").map(ClawGame::from_str).collect()
+        Self::machines_from_str_with_unit_correction(s, 0)
     }
 
-    pub fn min_tokens_to_win(&self) -> Option<u32> {
-        let mut min_tokens_to_win: Option<u32> = None;
+    pub fn machines_from_str_with_unit_correction(
+        s: &str,
+        unit_correction: i64,
+    ) -> Result<Vec<Self>, Box<dyn Error>> {
+        s.split("\n\n")
+            .map(ClawMachine::from_str)
+            .map(|result| {
+                result.map(|machine| ClawMachine {
+                    buttons: machine.buttons,
+                    prize: (
+                        machine.prize.0 + unit_correction,
+                        machine.prize.1 + unit_correction,
+                    ),
+                })
+            })
+            .collect()
+    }
 
-        for a in 0..=self.prize.x / self.buttons[0].x {
-            let b = (self.prize.x - (a * self.buttons[0].x)) / self.buttons[1].x;
+    pub fn min_tokens_to_win(&self) -> Option<u64> {
+        let mut min_tokens_to_win: Option<u64> = None;
 
-            if &self.buttons[0] * a + &self.buttons[1] * b == self.prize {
-                let tokens = (a * 3) + b;
+        let (x_a, y_a) = self.buttons[0];
+        let (x_b, y_b) = self.buttons[1];
+        let (x_p, y_p) = self.prize;
 
-                min_tokens_to_win = min_tokens_to_win
-                    .map(|t| t.min(tokens as u32))
-                    .or(Some(tokens as u32))
-            }
+        let b_presses = ((x_p * y_a) - (x_a * y_p)) / ((x_b * y_a) - (x_a * y_b));
+        let a_presses = (x_p - (b_presses * x_b)) / x_a;
+
+        if (a_presses * x_a) + (b_presses * x_b) == x_p
+            && (a_presses * y_a) + (b_presses * y_b) == y_p
+        {
+            let tokens = (a_presses * BUTTON_A_TOKENS) + (b_presses * BUTTON_B_TOKENS);
+
+            min_tokens_to_win = min_tokens_to_win
+                .map(|t| t.min(tokens as u64))
+                .or(Some(tokens as u64))
         }
 
         min_tokens_to_win
@@ -69,7 +107,7 @@ impl ClawGame {
                     .ok_or("Could not parse Y component")?
                     .parse()?;
 
-                Ok(Vector2d { x, y })
+                Ok((x, y))
             } else {
                 Err("Could not split x/y components".into())
             }
@@ -91,7 +129,7 @@ impl ClawGame {
                     .ok_or("Could not parse Y component")?
                     .parse()?;
 
-                Ok(Vector2d { x, y })
+                Ok((x, y))
             } else {
                 Err("Could not split x/y components".into())
             }
@@ -101,7 +139,7 @@ impl ClawGame {
     }
 }
 
-impl FromStr for ClawGame {
+impl FromStr for ClawMachine {
     type Err = Box<dyn Error>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -116,34 +154,6 @@ impl FromStr for ClawGame {
             })
         } else {
             Err("Could not parse machine string".into())
-        }
-    }
-}
-
-#[derive(Eq, PartialEq)]
-struct Vector2d {
-    x: i32,
-    y: i32,
-}
-
-impl Mul<i32> for &Vector2d {
-    type Output = Vector2d;
-
-    fn mul(self, rhs: i32) -> Self::Output {
-        Vector2d {
-            x: self.x * rhs,
-            y: self.y * rhs,
-        }
-    }
-}
-
-impl Add<Vector2d> for Vector2d {
-    type Output = Self;
-
-    fn add(self, rhs: Vector2d) -> Self::Output {
-        Vector2d {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
         }
     }
 }
@@ -173,11 +183,23 @@ mod test {
 
     #[test]
     fn test_min_tokens_to_win() {
-        let claw_machines = ClawGame::machines_from_str(TEST_MACHINES).unwrap();
+        let claw_machines = ClawMachine::machines_from_str(TEST_MACHINES).unwrap();
 
         assert_eq!(Some(280), claw_machines[0].min_tokens_to_win());
         assert_eq!(None, claw_machines[1].min_tokens_to_win());
         assert_eq!(Some(200), claw_machines[2].min_tokens_to_win());
         assert_eq!(None, claw_machines[3].min_tokens_to_win());
+    }
+
+    #[test]
+    fn test_min_tokens_to_win_unit_correction() {
+        let claw_machines =
+            ClawMachine::machines_from_str_with_unit_correction(TEST_MACHINES, UNIT_CORRECTION)
+                .unwrap();
+
+        assert!(claw_machines[0].min_tokens_to_win().is_none());
+        assert!(claw_machines[1].min_tokens_to_win().is_some());
+        assert!(claw_machines[2].min_tokens_to_win().is_none());
+        assert!(claw_machines[3].min_tokens_to_win().is_some());
     }
 }
