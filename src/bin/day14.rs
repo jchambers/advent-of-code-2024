@@ -1,35 +1,36 @@
 use std::env;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
 use std::str::FromStr;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
-    if let Some(path) = args.get(1) {
-        let robots = BufReader::new(File::open(path)?)
-            .lines()
-            .map_while(Result::ok)
-            .map(|line| Robot::from_str(line.as_str()))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let lobby = Lobby {
-            width: 101,
-            height: 103,
-            robots,
-        };
-
-        println!("Safety factor: {}", lobby.safety_factor(100));
-        println!(
-            "Time to horizontal symmetry: {}",
-            lobby.time_to_christmas_tree()
-        );
-
-        Ok(())
-    } else {
-        Err("Usage: day14 INPUT_FILE_PATH".into())
+    if args.len() < 3 {
+        return Err("Usage: day14 INPUT_FILE OUTPUT_DIRECTORY".into());
     }
+
+    let input_path = args.get(1).unwrap();
+    let output_directory = args.get(2).unwrap();
+
+    let robots = BufReader::new(File::open(input_path)?)
+        .lines()
+        .map_while(Result::ok)
+        .map(|line| Robot::from_str(line.as_str()))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let lobby = Lobby {
+        width: 101,
+        height: 103,
+        robots,
+    };
+
+    println!("Safety factor: {}", lobby.safety_factor(100));
+    lobby.write_images(Path::new(output_directory), 2048)?;
+
+    Ok(())
 }
 type Vector2d = (i32, i32);
 
@@ -72,39 +73,48 @@ impl Lobby {
         }
     }
 
-    pub fn time_to_christmas_tree(&self) -> u32 {
-        // Hypothesis: if the robots make a Christmas tree shape, the whole grid will be
-        // horizontally symmetrical, and that will ONLY happen when we get a Christmas tree shape
-        let mut time = 0;
+    pub fn write_images(
+        &self,
+        output_directory: &Path,
+        max_time: i32,
+    ) -> Result<(), Box<dyn Error>> {
+        for time in 0..=max_time {
+            let mut path_buf = output_directory.to_path_buf();
+            path_buf.push(format!("t{:03}.txt", time));
 
-        loop {
-            let mut tiles = vec![0; self.width * self.height];
-
-            self.robots
-                .iter()
-                .map(|robot| robot.position_after_seconds(time, self.width, self.height))
-                .map(|position| (self.width * position.1 as usize) + position.0 as usize)
-                .for_each(|i| tiles[i] += 1);
-
-            let horizontally_symmetric = (0..self.height).all(|y| {
-                let start = y * self.width;
-                let half = start + self.width / 2;
-                let end = start + self.width;
-
-                let left = start..half;
-                let right = (half + 1..end).rev();
-
-                left.map(|i| tiles[i])
-                    .zip(right.map(|i| tiles[i]))
-                    .all(|(a, b)| a == b)
-            });
-
-            if horizontally_symmetric {
-                return time as u32;
-            }
-
-            time += 1;
+            self.write_image(File::create(path_buf)?, time)?;
         }
+
+        Ok(())
+    }
+
+    pub fn write_image(&self, mut file: File, time: i32) -> Result<(), Box<dyn Error>> {
+        let mut tiles = vec![0; self.width * self.height];
+
+        self.robots
+            .iter()
+            .map(|robot| robot.position_after_seconds(time, self.width, self.height))
+            .map(|position| (self.width * position.1 as usize) + position.0 as usize)
+            .for_each(|i| tiles[i] += 1);
+
+        for y in 0..self.height {
+            let start = y * self.width;
+            let end = start + self.width;
+
+            let mut line: String = tiles[start..end]
+                .iter()
+                .map(|n| match n {
+                    0 => ' ',
+                    _ => '#',
+                })
+                .collect();
+
+            line.push('\n');
+
+            file.write_all(line.as_bytes())?;
+        }
+
+        Ok(())
     }
 }
 
