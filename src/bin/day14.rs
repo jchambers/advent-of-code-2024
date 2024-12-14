@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     println!("Safety factor: {}", lobby.safety_factor(100));
-    lobby.write_images(Path::new(output_directory), 2048)?;
+    lobby.write_interesting_images(Path::new(output_directory), 256, 20)?;
 
     Ok(())
 }
@@ -73,22 +73,34 @@ impl Lobby {
         }
     }
 
-    pub fn write_images(
+    pub fn write_interesting_images(
         &self,
         output_directory: &Path,
-        max_time: i32,
+        max_images: usize,
+        row_density_threshold: usize,
     ) -> Result<(), Box<dyn Error>> {
-        for time in 0..=max_time {
-            let mut path_buf = output_directory.to_path_buf();
-            path_buf.push(format!("t{:03}.txt", time));
+        let mut images_written = 0;
+        let mut time = 0;
 
-            self.write_image(File::create(path_buf)?, time)?;
+        while images_written < max_images {
+            let tiles = self.tiles(time);
+
+            if self.is_interesting_image(&tiles, row_density_threshold) {
+                let mut path_buf = output_directory.to_path_buf();
+                path_buf.push(format!("t{:04}.txt", time));
+
+                self.write_image(File::create(path_buf)?, &tiles)?;
+
+                images_written += 1;
+            }
+
+            time += 1
         }
 
         Ok(())
     }
 
-    pub fn write_image(&self, mut file: File, time: i32) -> Result<(), Box<dyn Error>> {
+    fn tiles(&self, time: i32) -> Vec<usize> {
         let mut tiles = vec![0; self.width * self.height];
 
         self.robots
@@ -97,6 +109,19 @@ impl Lobby {
             .map(|position| (self.width * position.1 as usize) + position.0 as usize)
             .for_each(|i| tiles[i] += 1);
 
+        tiles
+    }
+
+    fn is_interesting_image(&self, tiles: &[usize], row_density_threshold: usize) -> bool {
+        (0..self.height).any(|y| {
+            let start = y * self.width;
+            let end = start + self.width;
+
+            tiles[start..end].iter().sum::<usize>() >= row_density_threshold
+        })
+    }
+
+    fn write_image(&self, mut file: File, tiles: &[usize]) -> Result<(), Box<dyn Error>> {
         for y in 0..self.height {
             let start = y * self.width;
             let end = start + self.width;
