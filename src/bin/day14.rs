@@ -21,6 +21,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         };
 
         println!("Safety factor: {}", lobby.safety_factor(100));
+        println!(
+            "Time to horizontal symmetry: {}",
+            lobby.time_to_christmas_tree()
+        );
 
         Ok(())
     } else {
@@ -65,6 +69,41 @@ impl Lobby {
             Some(2)
         } else {
             Some(3)
+        }
+    }
+
+    pub fn time_to_christmas_tree(&self) -> u32 {
+        // Hypothesis: if the robots make a Christmas tree shape, the whole grid will be
+        // horizontally symmetrical, and that will ONLY happen when we get a Christmas tree shape
+        let mut time = 0;
+
+        loop {
+            let mut tiles = vec![0; self.width * self.height];
+
+            self.robots
+                .iter()
+                .map(|robot| robot.position_after_seconds(time, self.width, self.height))
+                .map(|position| (self.width * position.1 as usize) + position.0 as usize)
+                .for_each(|i| tiles[i] += 1);
+
+            let horizontally_symmetric = (0..self.height).all(|y| {
+                let start = y * self.width;
+                let half = start + self.width / 2;
+                let end = start + self.width;
+
+                let left = start..half;
+                let right = (half + 1..end).rev();
+
+                left.map(|i| tiles[i])
+                    .zip(right.map(|i| tiles[i]))
+                    .all(|(a, b)| a == b)
+            });
+
+            if horizontally_symmetric {
+                return time as u32;
+            }
+
+            time += 1;
         }
     }
 }
