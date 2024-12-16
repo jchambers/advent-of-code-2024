@@ -25,6 +25,8 @@ struct LanternfishWarehouse {
     moves: Vec<Direction>,
 
     robot_position: Position,
+
+    wide: bool,
 }
 
 impl LanternfishWarehouse {
@@ -33,18 +35,7 @@ impl LanternfishWarehouse {
         let mut robot_position = self.robot_position;
 
         self.moves.iter().for_each(|&direction| {
-            if let Some(movable_boxes) = self.movable_boxes(&robot_position, direction, &tiles) {
-                if movable_boxes > 0 {
-                    tiles[self.index(&Self::advance_position(&robot_position, direction, 1))] =
-                        Tile::Empty;
-
-                    tiles[self.index(&Self::advance_position(
-                        &robot_position,
-                        direction,
-                        movable_boxes + 1,
-                    ))] = Tile::Box;
-                }
-
+            if self.try_push(&robot_position, direction, tiles.as_mut_slice()).is_ok() {
                 robot_position = Self::advance_position(&robot_position, direction, 1);
             }
         });
@@ -61,22 +52,38 @@ impl LanternfishWarehouse {
         (100 * position.1 as u32) + position.0 as u32
     }
 
-    fn movable_boxes(
-        &self,
-        robot_position: &Position,
-        direction: Direction,
-        tiles: &[Tile],
-    ) -> Option<usize> {
-        let mut movable_boxes = 0;
-        let mut position = *robot_position;
+    fn try_push(&self, robot_position: &Position, direction: Direction, tiles: &mut [Tile]) -> Result<(), ()> {
+        if self.wide {
+            todo!()
+        } else {
+            if let Some(movable_boxes) = {
+                let mut movable_boxes = 0;
+                let mut position = *robot_position;
 
-        loop {
-            position = Self::advance_position(&position, direction, 1);
+                loop {
+                    position = Self::advance_position(&position, direction, 1);
 
-            match tiles[self.index(&position)] {
-                Tile::Empty => break Some(movable_boxes),
-                Tile::Wall => break None,
-                Tile::Box => movable_boxes += 1,
+                    match tiles[self.index(&position)] {
+                        Tile::Empty => break Some(movable_boxes),
+                        Tile::Wall => break None,
+                        Tile::Box => movable_boxes += 1,
+                    }
+                }
+            } {
+                if movable_boxes > 0 {
+                    tiles[self.index(&Self::advance_position(&robot_position, direction, 1))] =
+                        Tile::Empty;
+
+                    tiles[self.index(&Self::advance_position(
+                        &robot_position,
+                        direction,
+                        movable_boxes + 1,
+                    ))] = Tile::Box;
+                }
+
+                Ok(())
+            } else {
+                Err(())
             }
         }
     }
@@ -149,6 +156,7 @@ impl FromStr for LanternfishWarehouse {
                 width,
                 moves,
                 robot_position: robot_position.ok_or("Robot index not found")?,
+                wide: false,
             })
         } else {
             Err("Could not parse map and move list".into())
