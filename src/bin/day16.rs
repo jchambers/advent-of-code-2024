@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::error::Error;
+use std::ops::Neg;
 use std::str::FromStr;
 use std::{env, fs};
 
@@ -11,6 +12,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         let maze = ReindeerMaze::from_str(fs::read_to_string(path)?.as_str())?;
 
         println!("Lowest possible score: {}", maze.lowest_score().unwrap());
+
+        println!(
+            "Tiles on optimal path: {}",
+            maze.tiles_on_optimal_path().unwrap()
+        );
 
         Ok(())
     } else {
@@ -27,8 +33,15 @@ struct ReindeerMaze {
 }
 
 impl ReindeerMaze {
+    const STEP_COST: u32 = 1;
+    const TURN_COST: u32 = 1000;
+
     pub fn lowest_score(&self) -> Result<u32, ()> {
-        self.lowest_scores()[self.end]
+        self.lowest_score_at_exit(&self.lowest_scores())
+    }
+
+    fn lowest_score_at_exit(&self, lowest_scores: &[[Option<u32>; 4]]) -> Result<u32, ()> {
+        lowest_scores[self.end]
             .iter()
             .filter_map(|&score| score)
             .min()
@@ -65,7 +78,7 @@ impl ReindeerMaze {
                 priority_queue.push(ReindeerState {
                     index: forward_index,
                     heading,
-                    score: score + 1,
+                    score: score + Self::STEP_COST,
                 });
             }
 
@@ -90,12 +103,57 @@ impl ReindeerMaze {
                 priority_queue.push(ReindeerState {
                     index,
                     heading: turn,
-                    score: score + 1000,
+                    score: score + Self::TURN_COST,
                 });
             }
         }
 
         lowest_scores
+    }
+
+    pub fn tiles_on_optimal_path(&self) -> Result<u32, ()> {
+        let lowest_scores = self.lowest_scores();
+        let mut tiles_on_path = vec![false; self.tiles.len()];
+        let mut queue = vec![(self.end, self.lowest_score_at_exit(&lowest_scores)?)];
+
+        while let Some((index, score)) = queue.pop() {
+            tiles_on_path[index] = true;
+
+            if score == 0 {
+                // We're back to the start; bail out
+                continue;
+            }
+
+            // Find neighbors that are a single, straight step back
+            for direction in [
+                Direction::Up,
+                Direction::Down,
+                Direction::Left,
+                Direction::Right,
+            ] {
+                let next_index = self.next_index(index, direction);
+
+                if self.tiles[next_index] == Tile::Empty
+                    && lowest_scores[next_index][-direction as usize] == Some(score - 1)
+                {
+                    queue.push((next_index, score - 1));
+                }
+            }
+
+            // Find turns that lead to this state
+            for direction in [
+                Direction::Up,
+                Direction::Down,
+                Direction::Left,
+                Direction::Right,
+            ] {
+                if lowest_scores[index][direction as usize] == Some(score - 1000) {
+                    queue.push((index, score - 1000));
+                }
+            }
+        }
+
+        Ok(tiles_on_path.iter().filter(|&&on_path| on_path).count() as u32)
     }
 
     fn next_index(&self, index: usize, direction: Direction) -> usize {
@@ -187,6 +245,19 @@ enum Direction {
     Right,
 }
 
+impl Neg for Direction {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Direction::Up => Direction::Down,
+            Direction::Down => Direction::Up,
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+        }
+    }
+}
+
 impl From<Direction> for usize {
     fn from(direction: Direction) -> Self {
         match direction {
@@ -251,6 +322,19 @@ mod test {
         {
             let maze = ReindeerMaze::from_str(TEST_MAZE_LARGE).unwrap();
             assert_eq!(11048, maze.lowest_score().unwrap());
+        }
+    }
+
+    #[test]
+    fn test_tiles_on_optimal_path() {
+        {
+            let maze = ReindeerMaze::from_str(TEST_MAZE_SMALL).unwrap();
+            assert_eq!(45, maze.tiles_on_optimal_path().unwrap());
+        }
+
+        {
+            let maze = ReindeerMaze::from_str(TEST_MAZE_LARGE).unwrap();
+            assert_eq!(64, maze.tiles_on_optimal_path().unwrap());
         }
     }
 }
