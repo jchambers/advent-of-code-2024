@@ -8,7 +8,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Some(path) = args.get(1) {
         let mut computer = Computer::from_str(fs::read_to_string(path)?.as_str())?;
 
-        println!("Program output: {}", computer.run_program()?);
+        println!(
+            "Program output: {}",
+            computer
+                .run_program()?
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        );
+
+        println!("Quine with register A: {}", computer.quine_register_a()?);
 
         Ok(())
     } else {
@@ -16,14 +26,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-#[derive(Clone)]
 struct Computer {
     registers: [u64; 3],
     program: Vec<u8>,
 }
 
 impl Computer {
-    pub fn run_program(&mut self) -> Result<String, Box<dyn Error>> {
+    pub fn run_program(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut instruction_pointer = 0;
         let mut output = Vec::new();
 
@@ -56,11 +65,66 @@ impl Computer {
             }
         }
 
-        Ok(output
-            .iter()
-            .map(|value| value.to_string())
-            .collect::<Vec<String>>()
-            .join(","))
+        Ok(output.iter().map(|&value| value as u8).collect())
+    }
+
+    pub fn quine_register_a(&self) -> Result<u64, Box<dyn Error>> {
+        // Intentionally skip 0, since we know that will give us an empty result
+        let mut stack: Vec<StackOperation> = (1..8)
+            .rev()
+            .filter(|&a| {
+                if let Ok(digits) = self.run_program_with_register_a(a) {
+                    self.program.ends_with(&digits)
+                } else {
+                    false
+                }
+            })
+            .map(StackOperation::Explore)
+            .collect();
+
+        let mut a = 0;
+
+        while let Some(stack_operation) = stack.pop() {
+            match stack_operation {
+                StackOperation::Explore(candidate_bits) => {
+                    a = (a << 3) | candidate_bits;
+
+                    if self.run_program_with_register_a(a)? == self.program {
+                        return Ok(a);
+                    }
+
+                    stack.push(StackOperation::Backtrack);
+
+                    stack.extend(
+                        (0..8)
+                            .rev()
+                            .filter(|low_bits| {
+                                let candidate_a = (a << 3) | low_bits;
+
+                                if let Ok(digits) = self.run_program_with_register_a(candidate_a) {
+                                    self.program.ends_with(&digits)
+                                } else {
+                                    false
+                                }
+                            })
+                            .map(StackOperation::Explore),
+                    );
+                }
+
+                StackOperation::Backtrack => a >>= 3,
+            }
+        }
+
+        Err("Could not find quine value for register A".into())
+    }
+
+    fn run_program_with_register_a(&self, a: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut computer = Computer {
+            registers: [a, 0, 0],
+            program: self.program.clone(),
+        };
+
+        computer.run_program()
     }
 
     fn combo_operand(&self, operand: u8) -> Result<u64, Box<dyn Error>> {
@@ -145,6 +209,12 @@ impl TryFrom<u8> for Instruction {
     }
 }
 
+#[derive(Debug)]
+enum StackOperation {
+    Explore(u64),
+    Backtrack,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -161,6 +231,16 @@ mod test {
     #[test]
     fn test_run_program() {
         let mut computer = Computer::from_str(TEST_COMPUTER).unwrap();
-        assert_eq!("4,6,3,5,6,3,5,2,1,0", computer.run_program().unwrap());
+
+        assert_eq!(
+            "4,6,3,5,6,3,5,2,1,0",
+            computer
+                .run_program()
+                .unwrap()
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(",")
+        );
     }
 }
