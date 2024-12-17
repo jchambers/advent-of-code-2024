@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 use std::error::Error;
 use std::str::FromStr;
 use std::{env, fs};
@@ -18,8 +18,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 }
 
-type IndexAndHeading = (usize, Direction);
-
 struct ReindeerMaze {
     tiles: Vec<Tile>,
     width: usize,
@@ -30,8 +28,16 @@ struct ReindeerMaze {
 
 impl ReindeerMaze {
     pub fn lowest_score(&self) -> Result<u32, ()> {
+        self.lowest_scores()[self.end]
+            .iter()
+            .filter_map(|&score| score)
+            .min()
+            .ok_or(())
+    }
+
+    fn lowest_scores(&self) -> Vec<[Option<u32>; 4]> {
         let mut priority_queue = BinaryHeap::new();
-        let mut best_scores: HashMap<IndexAndHeading, u32> = HashMap::new();
+        let mut lowest_scores = vec![[None; 4]; self.tiles.len()];
 
         priority_queue.push(ReindeerState {
             index: self.start,
@@ -45,16 +51,12 @@ impl ReindeerMaze {
             score,
         }) = priority_queue.pop()
         {
-            if index == self.end {
-                return Ok(score);
-            }
-
-            if &score > best_scores.get(&(index, heading)).unwrap_or(&u32::MAX) {
+            if score > lowest_scores[index][heading as usize].unwrap_or(u32::MAX) {
                 // We've already found a lower-cost way to get to this state
                 continue;
             } else {
                 // This is the new best way to get to this state
-                best_scores.insert((index, heading), score);
+                lowest_scores[index][heading as usize] = Some(score);
             }
 
             let forward_index = self.next_index(index, heading);
@@ -93,7 +95,7 @@ impl ReindeerMaze {
             }
         }
 
-        Err(())
+        lowest_scores
     }
 
     fn next_index(&self, index: usize, direction: Direction) -> usize {
