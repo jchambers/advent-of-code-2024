@@ -67,9 +67,21 @@ impl ReindeerMaze {
                 });
             }
 
-            let turns = match heading {
-                Direction::Up | Direction::Down => [Direction::Left, Direction::Right],
-                Direction::Left | Direction::Right => [Direction::Up, Direction::Down],
+            let turns = {
+                let candidate_turns = match heading {
+                    Direction::Up | Direction::Down => [Direction::Left, Direction::Right],
+                    Direction::Left | Direction::Right => [Direction::Up, Direction::Down],
+                };
+
+                let mut turns = Vec::with_capacity(2);
+
+                for candidate_turn in candidate_turns {
+                    if self.tiles[self.next_index(index, candidate_turn)] == Tile::Empty {
+                        turns.push(candidate_turn);
+                    }
+                }
+
+                turns
             };
 
             for turn in turns {
@@ -189,7 +201,7 @@ mod test {
     use super::*;
     use indoc::indoc;
 
-    const TEST_MAZE: &str = indoc! {"
+    const TEST_MAZE_SMALL: &str = indoc! {"
         ###############
         #.......#....E#
         #.#.###.#.###.#
@@ -207,9 +219,36 @@ mod test {
         ###############
     "};
 
+    const TEST_MAZE_LARGE: &str = indoc! {"
+        #################
+        #...#...#...#..E#
+        #.#.#.#.#.#.#.#.#
+        #.#.#.#...#...#.#
+        #.#.#.#.###.#.#.#
+        #...#.#.#.....#.#
+        #.#.#.#.#.#####.#
+        #.#...#.#.#.....#
+        #.#.#####.#.###.#
+        #.#.#.......#...#
+        #.#.###.#####.###
+        #.#.#...#.....#.#
+        #.#.#.#####.###.#
+        #.#.#.........#.#
+        #.#.#.#########.#
+        #S#.............#
+        #################
+    "};
+
     #[test]
     fn test_lowest_score() {
-        let maze = ReindeerMaze::from_str(TEST_MAZE).unwrap();
-        assert_eq!(7036, maze.lowest_score().unwrap());
+        {
+            let maze = ReindeerMaze::from_str(TEST_MAZE_SMALL).unwrap();
+            assert_eq!(7036, maze.lowest_score().unwrap());
+        }
+
+        {
+            let maze = ReindeerMaze::from_str(TEST_MAZE_LARGE).unwrap();
+            assert_eq!(11048, maze.lowest_score().unwrap());
+        }
     }
 }
