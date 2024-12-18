@@ -20,6 +20,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             memory_region.shortest_path(1024)?
         );
 
+        let blocking_coordinate = memory_region.blocking_coordinate();
+
+        println!(
+            "Coordinate that blocks path to exit: {},{}",
+            blocking_coordinate.0, blocking_coordinate.1
+        );
+
         Ok(())
     } else {
         Err("Usage: day18 INPUT_FILE_PATH".into())
@@ -91,6 +98,29 @@ impl MemoryRegion {
         Err("No path to exit".into())
     }
 
+    pub fn blocking_coordinate(&self) -> (usize, usize) {
+        let i = self.falling_bytes[self.last_time_to_exit()];
+
+        (i % self.size, i / self.size)
+    }
+
+    fn last_time_to_exit(&self) -> usize {
+        let mut left = 0;
+        let mut right = self.falling_bytes.len() - 1;
+
+        while left <= right {
+            let mid = (left + right) / 2;
+
+            if self.shortest_path(mid).is_ok() {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+
+        right
+    }
+
     fn safe_neighbors(&self, index: usize, safe_coordinates: &[bool]) -> Vec<usize> {
         let x = index % self.size;
         let y = index / self.size;
@@ -154,5 +184,11 @@ mod test {
     fn test_shortest_path() {
         let memory_region = MemoryRegion::new(7, TEST_BYTES.lines().map(String::from)).unwrap();
         assert_eq!(22, memory_region.shortest_path(12).unwrap());
+    }
+
+    #[test]
+    fn test_blocking_coordinate() {
+        let memory_region = MemoryRegion::new(7, TEST_BYTES.lines().map(String::from)).unwrap();
+        assert_eq!((6, 1), memory_region.blocking_coordinate());
     }
 }
