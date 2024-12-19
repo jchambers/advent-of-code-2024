@@ -1,37 +1,34 @@
 use std::env;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::io::{BufRead, BufReader};
 use std::str::FromStr;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 3 {
-        return Err("Usage: day14 INPUT_FILE OUTPUT_DIRECTORY".into());
+    if let Some(path) = args.get(1) {
+        let robots = BufReader::new(File::open(path)?)
+            .lines()
+            .map_while(Result::ok)
+            .map(|line| Robot::from_str(line.as_str()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let lobby = Lobby {
+            width: 101,
+            height: 103,
+            robots,
+        };
+
+        println!("Safety factor: {}", lobby.safety_factor(100));
+        println!("Time of least randomness: {}", lobby.time_to_tree());
+
+        Ok(())
+    } else {
+        Err("Usage: day13 INPUT_FILE_PATH".into())
     }
-
-    let input_path = args.get(1).unwrap();
-    let output_directory = args.get(2).unwrap();
-
-    let robots = BufReader::new(File::open(input_path)?)
-        .lines()
-        .map_while(Result::ok)
-        .map(|line| Robot::from_str(line.as_str()))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let lobby = Lobby {
-        width: 101,
-        height: 103,
-        robots,
-    };
-
-    println!("Safety factor: {}", lobby.safety_factor(100));
-    lobby.write_interesting_images(Path::new(output_directory), 256, 20)?;
-
-    Ok(())
 }
+
 type Vector2d = (i32, i32);
 
 struct Lobby {
@@ -73,73 +70,45 @@ impl Lobby {
         }
     }
 
-    pub fn write_interesting_images(
-        &self,
-        output_directory: &Path,
-        max_images: usize,
-        row_density_threshold: usize,
-    ) -> Result<(), Box<dyn Error>> {
-        let mut images_written = 0;
-        let mut time = 0;
+    pub fn time_to_tree(&self) -> u32 {
+        let time_max = self.width * self.height;
 
-        while images_written < max_images {
-            let tiles = self.tiles(time);
+        let mut min_randomness = i64::MAX;
+        let mut min_randomness_time = 0;
 
-            if self.is_interesting_image(&tiles, row_density_threshold) {
-                let mut path_buf = output_directory.to_path_buf();
-                path_buf.push(format!("t{:04}.txt", time));
-
-                self.write_image(File::create(path_buf)?, &tiles)?;
-
-                images_written += 1;
-            }
-
-            time += 1
-        }
-
-        Ok(())
-    }
-
-    fn tiles(&self, time: i32) -> Vec<usize> {
-        let mut tiles = vec![0; self.width * self.height];
-
-        self.robots
-            .iter()
-            .map(|robot| robot.position_after_seconds(time, self.width, self.height))
-            .map(|position| (self.width * position.1 as usize) + position.0 as usize)
-            .for_each(|i| tiles[i] += 1);
-
-        tiles
-    }
-
-    fn is_interesting_image(&self, tiles: &[usize], row_density_threshold: usize) -> bool {
-        (0..self.height).any(|y| {
-            let start = y * self.width;
-            let end = start + self.width;
-
-            tiles[start..end].iter().sum::<usize>() >= row_density_threshold
-        })
-    }
-
-    fn write_image(&self, mut file: File, tiles: &[usize]) -> Result<(), Box<dyn Error>> {
-        for y in 0..self.height {
-            let start = y * self.width;
-            let end = start + self.width;
-
-            let mut line: String = tiles[start..end]
+        for time in 0..=time_max {
+            let positions: Vec<Vector2d> = self
+                .robots
                 .iter()
-                .map(|n| match n {
-                    0 => ' ',
-                    _ => '#',
-                })
+                .map(|robot| robot.position_after_seconds(time as i32, self.width, self.height))
                 .collect();
 
-            line.push('\n');
+            let (x_mean, y_mean) = positions
+                .iter()
+                .copied()
+                .reduce(|a, b| (a.0 + b.0, a.1 + b.1))
+                .map(|(x_sum, y_sum)| {
+                    (
+                        x_sum / positions.len() as i32,
+                        y_sum / positions.len() as i32,
+                    )
+                })
+                .unwrap();
 
-            file.write_all(line.as_bytes())?;
+            let randomness = positions
+                .iter()
+                .map(|(x, y)| ((x - x_mean).pow(2), (y - y_mean).pow(2)))
+                .reduce(|a, b| (a.0 + b.0, a.1 + b.1))
+                .map(|(x, y)| x as i64 * y as i64)
+                .unwrap();
+
+            if randomness < min_randomness {
+                min_randomness = randomness;
+                min_randomness_time = time;
+            }
         }
 
-        Ok(())
+        min_randomness_time as u32
     }
 }
 
