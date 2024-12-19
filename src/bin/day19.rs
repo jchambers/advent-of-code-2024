@@ -10,6 +10,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         println!("Possible patterns: {}", onsen.possible_patterns());
 
+        println!(
+            "Total possible arrangements: {}",
+            onsen.total_possible_arrangements()
+        );
+
         Ok(())
     } else {
         Err("Usage: day19 INPUT_FILE_PATH".into())
@@ -25,11 +30,18 @@ impl Onsen {
     pub fn possible_patterns(&self) -> usize {
         self.patterns
             .iter()
-            .filter(|pattern| Self::is_possible_pattern(pattern, &self.towels))
+            .filter(|pattern| Self::possible_arrangements(pattern, &self.towels) > 0)
             .count()
     }
 
-    fn is_possible_pattern<T: AsRef<str>>(pattern: &str, towels: &[T]) -> bool {
+    pub fn total_possible_arrangements(&self) -> u64 {
+        self.patterns
+            .iter()
+            .map(|pattern| Self::possible_arrangements(pattern, &self.towels))
+            .sum()
+    }
+
+    fn possible_arrangements<T: AsRef<str>>(pattern: &str, towels: &[T]) -> u64 {
         let mut paths = vec![0u64; pattern.len() + 1];
         paths[0] = 1;
 
@@ -48,7 +60,7 @@ impl Onsen {
             }
         }
 
-        paths[paths.len() - 1] > 0
+        paths[paths.len() - 1]
     }
 }
 
@@ -86,47 +98,15 @@ mod test {
     "};
 
     #[test]
-    fn test_is_possible_pattern() {
+    fn test_possible_arrangements() {
         let onsen = Onsen::from_str(TEST_ONSEN).unwrap();
+        let expected_possible_arrangements = vec![2, 1, 4, 6, 0, 1, 2, 0];
 
-        assert!(Onsen::is_possible_pattern(
-            &onsen.patterns[0],
-            &onsen.towels
-        ));
-
-        assert!(Onsen::is_possible_pattern(
-            &onsen.patterns[1],
-            &onsen.towels
-        ));
-
-        assert!(Onsen::is_possible_pattern(
-            &onsen.patterns[2],
-            &onsen.towels
-        ));
-
-        assert!(Onsen::is_possible_pattern(
-            &onsen.patterns[3],
-            &onsen.towels
-        ));
-
-        assert!(!Onsen::is_possible_pattern(
-            &onsen.patterns[4],
-            &onsen.towels
-        ));
-
-        assert!(Onsen::is_possible_pattern(
-            &onsen.patterns[5],
-            &onsen.towels
-        ));
-
-        assert!(Onsen::is_possible_pattern(
-            &onsen.patterns[6],
-            &onsen.towels
-        ));
-
-        assert!(!Onsen::is_possible_pattern(
-            &onsen.patterns[7],
-            &onsen.towels
-        ));
+        for i in 0..expected_possible_arrangements.len() {
+            assert_eq!(
+                expected_possible_arrangements[i],
+                Onsen::possible_arrangements(&onsen.patterns[i], &onsen.towels)
+            );
+        }
     }
 }
