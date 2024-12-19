@@ -7,12 +7,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(path) = args.get(1) {
         let onsen = Onsen::from_str(fs::read_to_string(path)?.as_str())?;
+        let possible_arrangements = onsen.possible_arrangements_by_towel();
 
-        println!("Possible patterns: {}", onsen.possible_patterns());
+        println!(
+            "Possible patterns: {}",
+            possible_arrangements
+                .iter()
+                .filter(|&&arrangements| arrangements > 0)
+                .count()
+        );
 
         println!(
             "Total possible arrangements: {}",
-            onsen.total_possible_arrangements()
+            possible_arrangements.iter().sum::<u64>()
         );
 
         Ok(())
@@ -27,18 +34,11 @@ struct Onsen {
 }
 
 impl Onsen {
-    pub fn possible_patterns(&self) -> usize {
-        self.patterns
-            .iter()
-            .filter(|pattern| Self::possible_arrangements(pattern, &self.towels) > 0)
-            .count()
-    }
-
-    pub fn total_possible_arrangements(&self) -> u64 {
+    pub fn possible_arrangements_by_towel(&self) -> Vec<u64> {
         self.patterns
             .iter()
             .map(|pattern| Self::possible_arrangements(pattern, &self.towels))
-            .sum()
+            .collect()
     }
 
     fn possible_arrangements<T: AsRef<str>>(pattern: &str, towels: &[T]) -> u64 {
