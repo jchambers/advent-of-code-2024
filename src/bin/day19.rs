@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::iter::repeat_with;
 use std::str::FromStr;
 use std::{env, fs};
 
@@ -29,33 +30,52 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 struct Onsen {
-    towels: Vec<String>,
+    towels_by_length: Vec<Vec<String>>,
+    min_towel_length: usize,
+
     patterns: Vec<String>,
 }
 
 impl Onsen {
+    pub fn new(towels: Vec<String>, patterns: Vec<String>) -> Self {
+        let min_towel_length = towels.iter().map(|t| t.len()).min().unwrap();
+        let max_towel_length = towels.iter().map(|t| t.len()).max().unwrap();
+
+        let mut towels_by_length: Vec<Vec<String>> =
+            repeat_with(Vec::new).take(max_towel_length + 1).collect();
+
+        towels
+            .into_iter()
+            .for_each(|towel| towels_by_length[towel.len()].push(towel));
+
+        Onsen {
+            towels_by_length,
+            min_towel_length,
+
+            patterns,
+        }
+    }
+
     pub fn possible_arrangements_by_towel(&self) -> Vec<u64> {
         self.patterns
             .iter()
-            .map(|pattern| Self::possible_arrangements(pattern, &self.towels))
+            .map(|pattern| self.possible_arrangements(pattern))
             .collect()
     }
 
-    fn possible_arrangements<T: AsRef<str>>(pattern: &str, towels: &[T]) -> u64 {
+    fn possible_arrangements(&self, pattern: &str) -> u64 {
         let mut paths = vec![0u64; pattern.len() + 1];
         paths[0] = 1;
 
-        for i in 1..=pattern.len() {
-            for towel in towels {
-                let towel = towel.as_ref();
+        for i in self.min_towel_length..=pattern.len() {
+            for towel_len in self.min_towel_length..=(self.towels_by_length.len() - 1).min(i) {
+                let prefix = &pattern[i - towel_len..i];
 
-                // If there isn't enough space for this towel, just keep moving
-                if i < towel.len() {
-                    continue;
-                }
-
-                if &pattern[i - towel.len()..i] == towel {
-                    paths[i] += paths[i - towel.len()];
+                if self.towels_by_length[towel_len]
+                    .iter()
+                    .any(|towel| towel == prefix)
+                {
+                    paths[i] += paths[i - towel_len];
                 }
             }
         }
@@ -72,7 +92,7 @@ impl FromStr for Onsen {
             let towels: Vec<String> = towels.split(", ").map(String::from).collect();
             let patterns = patterns.lines().map(String::from).collect();
 
-            Ok(Onsen { towels, patterns })
+            Ok(Onsen::new(towels, patterns))
         } else {
             Err("Could not parse towels".into())
         }
@@ -100,13 +120,11 @@ mod test {
     #[test]
     fn test_possible_arrangements() {
         let onsen = Onsen::from_str(TEST_ONSEN).unwrap();
-        let expected_possible_arrangements = vec![2, 1, 4, 6, 0, 1, 2, 0];
+        let expected_possible_arrangements: Vec<u64> = vec![2, 1, 4, 6, 0, 1, 2, 0];
 
-        for i in 0..expected_possible_arrangements.len() {
-            assert_eq!(
-                expected_possible_arrangements[i],
-                Onsen::possible_arrangements(&onsen.patterns[i], &onsen.towels)
-            );
-        }
+        assert_eq!(
+            expected_possible_arrangements,
+            onsen.possible_arrangements_by_towel()
+        );
     }
 }
