@@ -7,11 +7,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(path) = args.get(1) {
         let racetrack = RaceTrack::from_str(fs::read_to_string(path)?.as_str())?;
-        let cheats = racetrack.cheats(2);
 
         println!(
-            "Cheats saving at least 100 picoseconds: {}",
-            cheats.iter().filter(|&&savings| savings >= 100).count()
+            "2-picosecond cheats saving at least 100 picoseconds: {}",
+            racetrack
+                .cheats(2)
+                .iter()
+                .filter(|&&savings| savings >= 100)
+                .count()
+        );
+
+        println!(
+            "20-picosecond cheats saving at least 100 picoseconds: {}",
+            racetrack
+                .cheats(20)
+                .iter()
+                .filter(|&&savings| savings >= 100)
+                .count()
         );
 
         Ok(())
@@ -195,22 +207,44 @@ mod test {
     #[test]
     fn test() {
         let racetrack = RaceTrack::from_str(TEST_RACETRACK).unwrap();
-        let cheats = racetrack.cheats(2);
 
-        for (n, savings) in [
-            (14, 2),
-            (14, 4),
-            (2, 6),
-            (4, 8),
-            (2, 10),
-            (3, 12),
-            (1, 20),
-            (1, 36),
-            (1, 38),
-            (1, 40),
-            (1, 64),
-        ] {
-            assert_eq!(n, cheats.iter().filter(|&&s| s == savings).count());
+        {
+            let cheats = racetrack.cheats(2);
+
+            for (n, savings) in [
+                (14, 2),
+                (14, 4),
+                (2, 6),
+                (4, 8),
+                (2, 10),
+                (3, 12),
+                (1, 20),
+                (1, 36),
+                (1, 38),
+                (1, 40),
+                (1, 64),
+            ] {
+                assert_eq!(n, cheats.iter().filter(|&&s| s == savings).count());
+            }
+        }
+
+        {
+            let cheats = racetrack.cheats(20);
+
+            for (n, savings) in [
+                (32, 50),
+                (31, 52),
+                (29, 54),
+                (39, 56),
+                (25, 58),
+                (23, 60),
+                (20, 62),
+                (19, 64),
+                (12, 66),
+                (14, 68),
+            ] {
+                assert_eq!(n, cheats.iter().filter(|&&s| s == savings).count());
+            }
         }
     }
 }
