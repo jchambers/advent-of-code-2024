@@ -39,7 +39,13 @@ impl MonkeyMarket {
     pub fn secret_number_sum(&self, iterations: usize) -> u64 {
         self.secret_numbers
             .iter()
-            .map(|&seed| SecretNumbers::new(seed).take(iterations).last().unwrap())
+            .map(|&seed| {
+                SecretNumbers::new(seed)
+                    .skip(1)
+                    .take(iterations)
+                    .last()
+                    .unwrap()
+            })
             .sum()
     }
 
@@ -52,16 +58,10 @@ impl MonkeyMarket {
         self.secret_numbers
             .iter()
             .map(|&seed| {
-                let mut prices = Vec::with_capacity(iterations + 1);
-                prices.push((seed % 10) as i8);
-
-                prices.extend(
-                    SecretNumbers::new(seed)
-                        .take(iterations)
-                        .map(|n| (n % 10) as i8),
-                );
-
-                prices
+                SecretNumbers::new(seed)
+                    .take(iterations + 1)
+                    .map(|n| (n % 10) as i8)
+                    .collect::<Vec<i8>>()
             })
             .for_each(|prices| {
                 let deltas: Vec<i8> = prices
@@ -108,6 +108,8 @@ impl Iterator for SecretNumbers {
     type Item = u64;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let next = self.n;
+
         self.n ^= self.n << 6;
         self.n &= 0xffffff;
         self.n ^= self.n >> 5;
@@ -115,7 +117,7 @@ impl Iterator for SecretNumbers {
         self.n ^= self.n << 11;
         self.n &= 0xffffff;
 
-        Some(self.n)
+        Some(next)
     }
 }
 
@@ -130,7 +132,10 @@ mod test {
                 15887950, 16495136, 527345, 704524, 1553684, 12683156, 11100544, 12249484, 7753432,
                 5908254
             ],
-            SecretNumbers::new(123).take(10).collect::<Vec<u64>>()
+            SecretNumbers::new(123)
+                .skip(1)
+                .take(10)
+                .collect::<Vec<u64>>()
         );
     }
 
